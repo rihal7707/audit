@@ -57,16 +57,12 @@ export interface ReportViewProps {
   onSupplementSubmitted?: (progressUrl: string) => void;
 }
 
-const REPORT_TOC = [
-  { id: 'executive-summary', label: '1. Executive summary' },
-  { id: 'audit-snapshot', label: '2. Audit snapshot' },
-  { id: 'website-analysis', label: '3. Website analysis' },
-  { id: 'automation-opportunities', label: '4. Automation opportunities' },
-  { id: 'ai-agents', label: '5. Recommended AI agents' },
-  { id: 'implementation-roadmap', label: '6. Implementation roadmap' },
-  { id: 'assumptions-limitations', label: '7. Assumptions & limitations' },
-  { id: 'next-steps', label: '8. Next steps' },
-];
+// Dynamic TOC generated from shared config
+import { REPORT_SECTIONS } from '@/lib/report/section-config';
+
+const REPORT_TOC = REPORT_SECTIONS
+  .filter((s) => !s.premium)
+  .map((s, i) => ({ id: s.id, label: `${i + 1}. ${s.title}` }));
 
 function safeDisplayHostPath(urlStr: string): string {
   try {
