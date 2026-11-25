@@ -1,0 +1,112 @@
+@import '../../styles/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: light;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--emerald-500);
+    outline-offset: 2px;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-gradient {
+  background:
+    radial-gradient(60% 60% at 85% 15%, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0) 70%),
+    linear-gradient(160deg, var(--navy-950) 0%, var(--navy-800) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Dedicated A4 print styles for the audit report */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 16mm 14mm 18mm 14mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0F1B2D !important;
+    font-size: 10.5pt !important;
+    line-height: 1.45 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-expand {
+    display: block !important;
+    height: auto !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  .print-break-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-break-before {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .print-cover {
+    background: #0B1730 !important;
+    color: #FFFFFF !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  a.print-url-link::after {
+    content: " (" attr(href) ")";
+    font-family: ui-monospace, monospace;
+    font-size: 8.5pt;
+    color: #52607A;
+    word-break: break-all;
+  }
+
+  .print-running-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    font-size: 8pt;
+    color: #52607A;
+    border-top: 1px solid #E3E8EF;
+    padding-top: 4pt;
+    display: flex !important;
+    justify-content: space-between;
+    background: #ffffff;
+  }
+}

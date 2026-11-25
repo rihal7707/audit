@@ -1,0 +1,62 @@
+import 'server-only';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createClient, type Client } from '@libsql/client';
+import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
+import * as schema from './schema';
+import { getEnv } from '@/lib/env';
+
+export type AppDb = LibSQLDatabase<typeof schema>;
+
+let singletonClient: Client | null = null;
+let singletonDb: AppDb | null = null;
+
+function ensureLocalFileDirectory(databaseUrl: string): void {
+  if (!databaseUrl.startsWith('file:')) return;
+  const rawPath = databaseUrl.slice('file:'.length).split('?')[0] ?? '';
+  if (!rawPath || rawPath === ':memory:') return;
+  const resolved = path.resolve(/*turbopackIgnore: true*/ process.cwd(), rawPath);
+  const dir = path.dirname(resolved);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+export function createLibsqlClient(databaseUrl?: string, authToken?: string): Client {
+  const env = getEnv();
+  const url = databaseUrl ?? env.DATABASE_URL;
+  const token = authToken ?? env.DATABASE_AUTH_TOKEN;
+
+  ensureLocalFileDirectory(url);
+
+  return createClient({
+    url,
+    authToken: token,
+  });
+}
+
+export function getDbClient(): Client {
+  if (!singletonClient) {
+    singletonClient = createLibsqlClient();
+  }
+  return singletonClient;
+}
+
+export function getDb(): AppDb {
+  if (!singletonDb) {
+    const client = getDbClient();
+    singletonDb = drizzle(client, { schema });
+  }
+  return singletonDb;
+}
+
+export function setTestDb(client: Client): AppDb {
+  singletonClient = client;
+  singletonDb = drizzle(client, { schema });
+  return singletonDb;
+}
+
+export function resetDbForTesting(): void {
+  singletonClient = null;
+  singletonDb = null;
+}
