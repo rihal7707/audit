@@ -1,8 +1,10 @@
-// scripts/setup.js
+/* eslint-disable @typescript-eslint/no-require-imports */
+
 // Cross‑platform setup script for AMARKETING audit platform
 // Generates .env.local from .env.example, creates secrets, data folder, runs migrations,
 // and prints a checklist of missing required variables.
 
+/* eslint-disable-next-line @typescript-eslint/no-require-imports */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');

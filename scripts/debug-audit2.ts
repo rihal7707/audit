@@ -18,7 +18,7 @@ async function main() {
     console.log('No completed audits found');
     return;
   }
-  const audit = rows[0];
+  const audit = rows[0]!;
   console.log('Audit ID:', audit.id);
   console.log('Report JSON length:', audit.reportJson?.length ?? 0);
   if (audit.reportJson) {

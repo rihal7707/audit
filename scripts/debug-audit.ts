@@ -1,6 +1,6 @@
 // scripts/debug-audit.ts
 // Simple script to fetch the latest completed audit and output premium keys presence
-import path from 'path';
+
 import { getDb } from '@/lib/db';
 import { audits } from '@/lib/db/schema';
 import { desc, eq } from 'drizzle-orm';
@@ -12,7 +12,7 @@ async function main() {
     console.log('No completed audits found');
     return;
   }
-  const audit = rows[0];
+  const audit = rows[0]!;
   console.log('Audit ID:', audit.id);
   console.log('Report version:', audit.reportVersion);
   if (!audit.reportJson) {
