@@ -506,7 +506,7 @@ export async function runAuditPipeline(
         auditId,
         'WAITING_FOR_QUOTA',
         'Gemini API quota/availability reached (429/503). Crawl data preserved for automatic or manual resume.',
-        { statusCode: err.statusCode },
+        { statusCode: err.statusCode, detail: err.message.slice(0, 180) },
       );
       return { status: 'WAITING_FOR_QUOTA' };
     }

@@ -36,6 +36,7 @@ import { getClientIpHash } from '@/lib/security/tokens';
 import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
 
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 const PostMessageSchema = z.object({
   message: z.string().trim().min(1),

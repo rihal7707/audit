@@ -1,6 +1,12 @@
 import 'server-only';
 import { GoogleGenAI } from '@google/genai';
-import { buildModelCandidateList, RESILIENCE_FLASH_MODELS, selectGeminiModel } from './select-model';
+import {
+  buildModelCandidateList,
+  markModelTransientlyUnhealthy,
+  prioritizeHealthyModels,
+  RESILIENCE_FLASH_MODELS,
+  selectGeminiModel,
+} from './select-model';
 import { getEnv } from '@/lib/env';
 
 
@@ -40,6 +46,7 @@ export interface AiModelClient {
     prompt: string;
     responseJsonSchema: Record<string, unknown>;
     temperature: number;
+    timeoutMs?: number;
   }): Promise<string>;
 }
 
@@ -75,15 +82,15 @@ function isTransientAiError(status: number | null): boolean {
 }
 
 function createRealGeminiClient(apiKey: string): AiModelClient {
-  const ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      timeout: 22_000,
-      retryOptions: { attempts: 1 },
-    },
-  });
   return {
-    async generateText({ model, systemInstruction, prompt, responseJsonSchema, temperature }) {
+    async generateText({ model, systemInstruction, prompt, responseJsonSchema, temperature, timeoutMs }) {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          timeout: timeoutMs ?? 20_000,
+          retryOptions: { attempts: 1 },
+        },
+      });
       const response = await ai.models.generateContent({
         model,
         contents: prompt,
@@ -118,18 +125,26 @@ async function callModelWithFallback(
   extraFallbacks: string[],
   prompt: string,
   responseJsonSchema: Record<string, unknown>,
-  deadlineMs = Date.now() + 46_000,
+  deadlineMs = Date.now() + 48_000,
 ): Promise<{ rawText: string; usedModel: string }> {
-  const candidates = buildModelCandidateList(primaryModel, fallbackModel, extraFallbacks);
+  const useHealthOrder = extraFallbacks.length > 0;
+  const baseCandidates = buildModelCandidateList(primaryModel, fallbackModel, extraFallbacks);
+  const candidates = useHealthOrder ? prioritizeHealthyModels(baseCandidates) : baseCandidates;
   let lastErr: unknown = new GeminiGenerationError('No AI model candidates available.');
   let lastTransientStatus = 503;
   let sawTransient = false;
+  const attemptsLog: string[] = [];
 
   for (let i = 0; i < candidates.length; i++) {
-    if (i > 0 && Date.now() >= deadlineMs) {
-      throw new GeminiQuotaError('AI capacity temporarily saturated.', lastTransientStatus);
+    const remainingMs = deadlineMs - Date.now();
+    if (i > 0 && remainingMs < 5_000) {
+      throw new GeminiQuotaError(`AI capacity temporarily saturated (${attemptsLog.join(', ')}).`, lastTransientStatus);
     }
     const model = candidates[i]!;
+    const attemptTimeoutMs =
+      i < candidates.length - 1
+        ? Math.min(12_500, Math.max(6_000, remainingMs))
+        : Math.min(24_000, Math.max(8_000, remainingMs));
     try {
       const rawText = await client.generateText({
         model,
@@ -137,17 +152,21 @@ async function callModelWithFallback(
         prompt,
         responseJsonSchema,
         temperature: 0.25,
+        timeoutMs: attemptTimeoutMs,
       });
       return { rawText, usedModel: model };
     } catch (err) {
       lastErr = err;
       const status = getHttpStatusFromError(err);
+      attemptsLog.push(`${model}:${status ?? 'err'}`);
       if (isTransientAiError(status)) {
         sawTransient = true;
         lastTransientStatus = status || 503;
+        if (useHealthOrder) markModelTransientlyUnhealthy(model);
         continue;
       }
       if (status === 404) {
+        if (useHealthOrder) markModelTransientlyUnhealthy(model, 600_000);
         continue;
       }
       throw err;
@@ -155,7 +174,7 @@ async function callModelWithFallback(
   }
 
   if (sawTransient) {
-    throw new GeminiQuotaError('AI capacity temporarily saturated.', lastTransientStatus);
+    throw new GeminiQuotaError(`AI capacity temporarily saturated (${attemptsLog.join(', ')}).`, lastTransientStatus);
   }
   throw lastErr;
 }
@@ -207,7 +226,7 @@ export async function generateGroundedAuditReport(
   };
 
   const extraFallbacks = testMockAdapter ? [] : RESILIENCE_FLASH_MODELS;
-  const stageDeadlineMs = Date.now() + 46_000;
+  const stageDeadlineMs = Date.now() + 48_000;
 
   // Call 1: normal generation
   const first = await callModelWithFallback(

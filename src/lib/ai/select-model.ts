@@ -3,7 +3,36 @@ import { getEnv } from '@/lib/env';
 
 let cachedModel: { value: string; fingerprint: string; expiresAt: number } | null = null;
 
-export const RESILIENCE_FLASH_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'];
+export const RESILIENCE_FLASH_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+
+const transientUnhealthyModels = new Map<string, number>();
+
+export function markModelTransientlyUnhealthy(model: string, ttlMs = 120_000): void {
+  const key = model.trim();
+  if (key) {
+    transientUnhealthyModels.set(key, Date.now() + ttlMs);
+  }
+}
+
+export function resetModelHealthCacheForTesting(): void {
+  transientUnhealthyModels.clear();
+}
+
+export function prioritizeHealthyModels(candidates: string[]): string[] {
+  const now = Date.now();
+  const healthy: string[] = [];
+  const unhealthy: string[] = [];
+  for (const m of candidates) {
+    const exp = transientUnhealthyModels.get(m);
+    if (exp !== undefined && exp > now) {
+      unhealthy.push(m);
+    } else {
+      if (exp !== undefined) transientUnhealthyModels.delete(m);
+      healthy.push(m);
+    }
+  }
+  return [...healthy, ...unhealthy];
+}
 
 export function buildModelCandidateList(
   primary: string,

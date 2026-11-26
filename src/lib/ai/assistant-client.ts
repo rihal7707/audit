@@ -4,6 +4,8 @@ import { GoogleGenAI } from '@google/genai';
 import { getEnv } from '@/lib/env';
 import {
   buildModelCandidateList,
+  markModelTransientlyUnhealthy,
+  prioritizeHealthyModels,
   RESILIENCE_FLASH_MODELS,
   selectGeminiModel,
 } from '@/lib/ai/select-model';
@@ -46,6 +48,7 @@ export interface AssistantModelClient {
     prompt: string;
     responseJsonSchema: Record<string, unknown>;
     maxOutputTokens: number;
+    timeoutMs?: number;
   }): Promise<{ text: string; finishReason?: string }>;
 }
 
@@ -79,12 +82,12 @@ function isTransientStatus(status: number | null): boolean {
 }
 
 function createRealClient(apiKey: string): AssistantModelClient {
-  const ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: { timeout: 20_000, retryOptions: { attempts: 1 } },
-  });
   return {
-    async generateReply({ model, systemInstruction, prompt, responseJsonSchema, maxOutputTokens }) {
+    async generateReply({ model, systemInstruction, prompt, responseJsonSchema, maxOutputTokens, timeoutMs }) {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { timeout: timeoutMs ?? 18_000, retryOptions: { attempts: 1 } },
+      });
       const res = await ai.models.generateContent({
         model,
         contents: prompt,
@@ -120,27 +123,29 @@ async function callWithFallback(params: {
   schema: Record<string, unknown>;
   maxOutputTokens: number;
 }): Promise<{ text: string; finishReason?: string; usedModel: string }> {
-  const invoke = (model: string) =>
+  const invoke = (model: string, timeoutMs: number) =>
     params.client.generateReply({
       model,
       systemInstruction: AUDIT_ASSISTANT_SYSTEM_PROMPT,
       prompt: params.prompt,
       responseJsonSchema: params.schema,
       maxOutputTokens: params.maxOutputTokens,
+      timeoutMs,
     });
 
-  const candidates = buildModelCandidateList(
-    params.primaryModel,
-    params.fallbackModel,
-    params.extraFallbacks ?? [],
-  );
+  const extra = params.extraFallbacks ?? [];
+  const useHealthOrder = extra.length > 0;
+  const baseCandidates = buildModelCandidateList(params.primaryModel, params.fallbackModel, extra);
+  const candidates = useHealthOrder ? prioritizeHealthyModels(baseCandidates) : baseCandidates;
   let lastErr: unknown = new AssistantGenerationError('No assistant model candidates available.');
   let sawTransient = false;
   let lastTransientStatus = 503;
 
-  for (const model of candidates) {
+  for (let i = 0; i < candidates.length; i++) {
+    const model = candidates[i]!;
+    const timeoutMs = i < candidates.length - 1 ? 10_000 : 18_000;
     try {
-      const out = await invoke(model);
+      const out = await invoke(model, timeoutMs);
       return { ...out, usedModel: model };
     } catch (err) {
       lastErr = err;
@@ -151,9 +156,11 @@ async function callWithFallback(params: {
       if (isTransientStatus(status)) {
         sawTransient = true;
         lastTransientStatus = status || 503;
+        if (useHealthOrder) markModelTransientlyUnhealthy(model);
         continue;
       }
       if (status === 404) {
+        if (useHealthOrder) markModelTransientlyUnhealthy(model, 600_000);
         continue;
       }
       throw err;
