@@ -489,7 +489,11 @@ export async function runAuditPipeline(
     return { status: finalAuditStatus };
   } catch (err) {
     const existing = await findAuditById(auditId);
-    const nextRetry = (existing?.retryCount ?? 0) + 1;
+    if (!existing) {
+      log.warn({ err }, 'Audit record was deleted before failure state could be persisted');
+      return { status: 'FAILED', error: 'Audit record not found.' };
+    }
+    const nextRetry = existing.retryCount + 1;
 
     if (err instanceof GeminiQuotaError) {
       await updateAuditProgress(auditId, {
