@@ -10,6 +10,23 @@ export type AppDb = LibSQLDatabase<typeof schema>;
 
 let singletonClient: Client | null = null;
 let singletonDb: AppDb | null = null;
+let singletonPragmaPromise: Promise<void> | null = null;
+
+function isPersistentFileDb(databaseUrl: string): boolean {
+  if (!databaseUrl.startsWith('file:')) return false;
+  const rawPath = databaseUrl.slice('file:'.length).split('?')[0] ?? '';
+  return Boolean(rawPath) && rawPath !== ':memory:';
+}
+
+async function applySqlitePragmas(client: Client): Promise<void> {
+  try {
+    await client.execute('PRAGMA busy_timeout = 5000;');
+    await client.execute('PRAGMA journal_mode = WAL;');
+    await client.execute('PRAGMA synchronous = NORMAL;');
+  } catch {
+    // Ignore pragma errors on constrained drivers/test doubles
+  }
+}
 
 function ensureLocalFileDirectory(databaseUrl: string): void {
   if (!databaseUrl.startsWith('file:')) return;
@@ -37,9 +54,20 @@ export function createLibsqlClient(databaseUrl?: string, authToken?: string): Cl
 
 export function getDbClient(): Client {
   if (!singletonClient) {
-    singletonClient = createLibsqlClient();
+    const env = getEnv();
+    singletonClient = createLibsqlClient(env.DATABASE_URL, env.DATABASE_AUTH_TOKEN);
+    if (isPersistentFileDb(env.DATABASE_URL)) {
+      singletonPragmaPromise = applySqlitePragmas(singletonClient);
+    }
   }
   return singletonClient;
+}
+
+export async function ensureDbReady(): Promise<void> {
+  getDbClient();
+  if (singletonPragmaPromise) {
+    await singletonPragmaPromise;
+  }
 }
 
 export function getDb(): AppDb {
@@ -52,11 +80,13 @@ export function getDb(): AppDb {
 
 export function setTestDb(client: Client): AppDb {
   singletonClient = client;
+  singletonPragmaPromise = null;
   singletonDb = drizzle(client, { schema });
   return singletonDb;
 }
 
 export function resetDbForTesting(): void {
   singletonClient = null;
+  singletonPragmaPromise = null;
   singletonDb = null;
 }

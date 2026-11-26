@@ -1,5 +1,6 @@
 import { after, type NextRequest } from 'next/server';
 import { getEnv } from '@/lib/env';
+import { ensureDbReady } from '@/lib/db';
 import { createRequestLogger } from '@/lib/logger';
 import { isCountryRestrictedForUnpaidGemini } from '@/lib/config/countries';
 import {
@@ -32,6 +33,25 @@ import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
 
 export const maxDuration = 60;
 
+async function withSqliteBusyRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const code = (err as { code?: unknown })?.code;
+      if ((code === 'SQLITE_BUSY' || msg.includes('SQLITE_BUSY')) && i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, 120 * (i + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
 export async function POST(request: NextRequest) {
   const requestId = createRequestId();
   const log = createRequestLogger(requestId);
@@ -39,7 +59,10 @@ export async function POST(request: NextRequest) {
   try {
     return await handleAuditSubmission(request, requestId, log);
   } catch (err) {
-    log.error({ err }, 'Unhandled error in POST /api/audits');
+    const errMessage = err instanceof Error ? err.message : String(err);
+    const errCode = (err as { code?: unknown })?.code;
+    log.error({ err, errCode }, 'Unhandled error in POST /api/audits');
+    console.error(`[POST /api/audits] requestId=${requestId} code=${String(errCode ?? '')} error=${errMessage}`);
     return apiError(
       'Server error while starting your audit. Please retry or contact our team.',
       500,
@@ -61,7 +84,12 @@ async function handleAuditSubmission(
     return apiError('Invalid request format.', 400, requestId);
   }
 
-  const parsed = AuditSubmissionSchema.safeParse(rawBody);
+  let parsed;
+  try {
+    parsed = AuditSubmissionSchema.safeParse(rawBody);
+  } catch {
+    return apiError('Please review the highlighted fields.', 400, requestId);
+  }
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
     for (const issue of parsed.error.issues) {
@@ -135,12 +163,15 @@ async function handleAuditSubmission(
     }
   }
 
+  await ensureDbReady();
   const ipHash = getClientIpHash(request);
 
   // Dedupe check (same normalized domain + email within 24 hours)
   const twentyFourHoursAgoIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const dedupeKey = buildDedupeKey(staticUrl.registrableDomain, data.contactEmail);
-  const existingDuplicate = await findRecentDuplicateAudit(dedupeKey, twentyFourHoursAgoIso);
+  const existingDuplicate = await withSqliteBusyRetry(() =>
+    findRecentDuplicateAudit(dedupeKey, twentyFourHoursAgoIso),
+  );
   if (existingDuplicate) {
     return apiSuccess(
       {
@@ -154,13 +185,13 @@ async function handleAuditSubmission(
   }
 
   // DB-backed IP rate limits
-  const rl = await enforceAuditSubmissionRateLimit(ipHash);
+  const rl = await withSqliteBusyRetry(() => enforceAuditSubmissionRateLimit(ipHash));
   if (!rl.allowed) {
     return apiError(rl.reason || 'Rate limit exceeded.', 429, requestId);
   }
 
   // Global daily cap check
-  const recentCount = await countAuditsSince(twentyFourHoursAgoIso);
+  const recentCount = await withSqliteBusyRetry(() => countAuditsSince(twentyFourHoursAgoIso));
   const dailyCapReached = recentCount >= env.MAX_AUDITS_PER_DAY;
 
   const publicToken = generatePublicToken();
@@ -179,7 +210,8 @@ async function handleAuditSubmission(
     crawlCoverage: null,
   });
 
-  const audit = await createAudit({
+  const audit = await withSqliteBusyRetry(() =>
+    createAudit({
     publicToken,
     businessName: data.businessName,
     website: staticUrl.normalizedUrl,
@@ -213,7 +245,8 @@ async function handleAuditSubmission(
     releaseStatus: env.REPORT_RELEASE_MODE === 'review' ? 'PENDING_REVIEW' : 'AUTO',
     dedupeKey,
     ipHash,
-  });
+  }),
+  );
 
   void sendNonBlockingNotification({
     event: 'NEW_AUDIT',
