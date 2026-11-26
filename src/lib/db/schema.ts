@@ -230,3 +230,22 @@ export const processingLocks = sqliteTable('processing_locks', {
   expiresAt: text('expires_at').notNull(),
 });
 
+export const auditRoi = sqliteTable(
+  'audit_roi',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    auditId: integer('audit_id')
+      .notNull()
+      .references(() => audits.id, { onDelete: 'cascade' }),
+    currency: text('currency').notNull().default('USD'),
+    inputsJson: text('inputs_json').notNull(),
+    scenariosJson: text('scenarios_json').notNull(),
+    selectedScenario: text('selected_scenario').notNull().default('moderate'),
+    outputsJson: text('outputs_json').notNull(),
+    calcVersion: text('calc_version').notNull(),
+    interacted: integer('interacted', { mode: 'boolean' }).notNull().default(false),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [uniqueIndex('audit_roi_audit_id_idx').on(table.auditId)],
+);
+

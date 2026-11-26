@@ -10,10 +10,24 @@ import { qualifyLead } from '@/lib/leads/qualify';
 import { sendNonBlockingNotification } from '@/lib/notifications/notify';
 import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
 
+import { scrubSensitiveForAi } from '@/lib/security/pii-scrub';
+
+const IntentContextSchema = z
+  .object({
+    source: z.enum(['ROI', 'ASSISTANT', 'REPORT']).optional(),
+    scenario: z.string().trim().max(40).optional(),
+    opportunityId: z.string().trim().max(120).optional(),
+    findingId: z.string().trim().max(120).optional(),
+    lastMessage: z.string().trim().max(600).optional(),
+  })
+  .optional();
+
 const IntentSchema = z.object({
   type: z.enum(['CONSULTATION', 'PILOT', 'DISCUSS', 'BOOKING_CLICK']),
   message: z.string().trim().max(1000).optional(),
   preferredTime: z.string().trim().max(160).optional(),
+  preferredContactMethod: z.enum(['email', 'phone', 'either']).optional(),
+  context: IntentContextSchema,
 });
 
 function parseJsonArray(raw: string): string[] {
@@ -55,7 +69,15 @@ export async function POST(
   }
 
   const now = new Date().toISOString();
-  const { type, message, preferredTime } = parsed.data;
+  const { type, message, preferredTime, preferredContactMethod, context: intentContext } = parsed.data;
+  const safeContext = intentContext
+    ? {
+        ...intentContext,
+        lastMessage: intentContext.lastMessage
+          ? scrubSensitiveForAi(intentContext.lastMessage)
+          : undefined,
+      }
+    : undefined;
 
   const consultRequestedAt =
     type === 'CONSULTATION' || type === 'DISCUSS'
@@ -100,10 +122,19 @@ export async function POST(
     `Customer recorded ${type} action from report page.`,
     {
       preferredTime: preferredTime ?? null,
-      message: message ?? null,
+      preferredContactMethod: preferredContactMethod ?? null,
+      message: message ? scrubSensitiveForAi(message) : null,
+      context: safeContext ?? null,
       newScore: scoring.totalScore,
     },
   );
+
+  if (safeContext?.source === 'ROI') {
+    await recordAuditEvent(audit.id, 'ROI_CTA_CLICK', `Customer clicked ROI CTA (${type}).`, {
+      type,
+      scenario: safeContext.scenario ?? null,
+    });
+  }
 
   if (type !== 'BOOKING_CLICK') {
     void sendNonBlockingNotification({

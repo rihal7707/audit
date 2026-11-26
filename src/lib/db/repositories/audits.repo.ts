@@ -20,6 +20,7 @@ import {
   auditFindings,
   auditNotes,
   auditPages,
+  auditRoi,
   auditStageHistory,
   PIPELINE_STAGES,
   processingLocks,
@@ -748,20 +749,45 @@ export async function getAdminStats(nowIso = new Date().toISOString()): Promise<
 
 export async function deleteAuditById(id: number): Promise<boolean> {
   const db = getDb();
-  const res = await db.delete(audits).where(eq(audits.id, id));
-  return Number(res.rowsAffected ?? 0) > 0;
+  await db.run(sql`PRAGMA foreign_keys = ON;`).catch(() => {});
+  return db.transaction(async (tx) => {
+    await tx.delete(auditRoi).where(eq(auditRoi.auditId, id));
+    const res = await tx.delete(audits).where(eq(audits.id, id));
+    return Number(res.rowsAffected ?? 0) > 0;
+  });
 }
 
 export async function deleteAuditByToken(token: string): Promise<boolean> {
   const db = getDb();
-  const res = await db.delete(audits).where(eq(audits.publicToken, token));
-  return Number(res.rowsAffected ?? 0) > 0;
+  await db.run(sql`PRAGMA foreign_keys = ON;`).catch(() => {});
+  return db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ id: audits.id })
+      .from(audits)
+      .where(eq(audits.publicToken, token))
+      .limit(1);
+    const id = existing[0]?.id;
+    if (!id) return false;
+    await tx.delete(auditRoi).where(eq(auditRoi.auditId, id));
+    const res = await tx.delete(audits).where(eq(audits.id, id));
+    return Number(res.rowsAffected ?? 0) > 0;
+  });
 }
 
 export async function purgeExpiredAudits(cutoffIso: string): Promise<number> {
   const db = getDb();
-  const res = await db.delete(audits).where(lt(audits.createdAt, cutoffIso));
-  return Number(res.rowsAffected ?? 0);
+  await db.run(sql`PRAGMA foreign_keys = ON;`).catch(() => {});
+  return db.transaction(async (tx) => {
+    const expired = await tx
+      .select({ id: audits.id })
+      .from(audits)
+      .where(lt(audits.createdAt, cutoffIso));
+    const ids = expired.map((r) => r.id);
+    if (ids.length === 0) return 0;
+    await tx.delete(auditRoi).where(inArray(auditRoi.auditId, ids));
+    const res = await tx.delete(audits).where(inArray(audits.id, ids));
+    return Number(res.rowsAffected ?? 0);
+  });
 }
 
 export async function acquireProcessingLock(

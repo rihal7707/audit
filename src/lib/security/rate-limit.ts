@@ -50,3 +50,7 @@ export async function enforceRetryRateLimit(publicToken: string): Promise<RateLi
   return checkAndIncrementRateLimit(`retry:1h:${publicToken}`, 3600, 5);
 }
 
+export async function enforceRoiSaveRateLimit(publicToken: string): Promise<RateLimitResult> {
+  return checkAndIncrementRateLimit(`roi-save:1h:${publicToken}`, 3600, 60);
+}
+
