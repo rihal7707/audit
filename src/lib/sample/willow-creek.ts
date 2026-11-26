@@ -1,4 +1,6 @@
 import { AuditReportSchema, type AuditReport } from '@/lib/ai/report-schema';
+import { calculateAllScenarios } from '@/lib/roi/calculator';
+import type { RoiInputs, RoiOutputs, RoiScenario, ScenarioKey } from '@/lib/roi/types';
 
 /**
  * Fictional sample audit report for Willow Creek Orthodontics.
@@ -330,4 +332,53 @@ const rawSampleReport: AuditReport = {
 };
 
 export const WILLOW_CREEK_SAMPLE_REPORT: AuditReport = AuditReportSchema.parse(rawSampleReport);
+
+export const WILLOW_CREEK_SAMPLE_CHALLENGES: string[] = [
+  'Missed phone calls',
+  'Slow customer follow-ups',
+  'Manual administrative work',
+];
+
+export const WILLOW_CREEK_SAMPLE_ROI_INPUTS: RoiInputs = {
+  currency: 'USD',
+  monthlyAdminTasks: 500,
+  minutesPerAdminTask: 8,
+  hourlyCost: 25,
+  monthlyFollowUps: 200,
+  minutesPerFollowUp: 6,
+  monthlyMissedCalls: 60,
+  conversionRatePct: 20,
+  grossProfitPerCustomer: 400,
+};
+
+export const WILLOW_CREEK_SAMPLE_SCENARIOS: Record<ScenarioKey, RoiScenario> = {
+  conservative: {
+    key: 'conservative',
+    label: 'Conservative',
+    adminAutomationPct: 25,
+    missedCallRecoverPct: 20,
+    followUpAutomationPct: 25,
+  },
+  moderate: {
+    key: 'moderate',
+    label: 'Moderate',
+    adminAutomationPct: 60,
+    missedCallRecoverPct: 50,
+    followUpAutomationPct: 50,
+  },
+  optimistic: {
+    key: 'optimistic',
+    label: 'Optimistic',
+    adminAutomationPct: 75,
+    missedCallRecoverPct: 60,
+    followUpAutomationPct: 75,
+  },
+};
+
+export function getWillowCreekSampleRoiOutputs(
+  inputs: RoiInputs = WILLOW_CREEK_SAMPLE_ROI_INPUTS,
+  scenarios: Record<ScenarioKey, RoiScenario> = WILLOW_CREEK_SAMPLE_SCENARIOS,
+): Record<ScenarioKey, RoiOutputs> {
+  return calculateAllScenarios(inputs, scenarios);
+}
 

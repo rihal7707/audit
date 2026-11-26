@@ -4,7 +4,10 @@ import { ArrowRight } from 'lucide-react';
 import { SiteHeader } from '@/components/layout/site-header';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { ReportView } from '@/components/report/report-view';
-import { WILLOW_CREEK_SAMPLE_REPORT } from '@/lib/sample/willow-creek';
+import {
+  WILLOW_CREEK_SAMPLE_CHALLENGES,
+  WILLOW_CREEK_SAMPLE_REPORT,
+} from '@/lib/sample/willow-creek';
 
 export const metadata: Metadata = {
   title: 'Sample AI Business Audit Report – Willow Creek Orthodontics',
@@ -20,6 +23,7 @@ export default function SampleReportPage() {
         <ReportView
           report={WILLOW_CREEK_SAMPLE_REPORT}
           isSample
+          challenges={WILLOW_CREEK_SAMPLE_CHALLENGES}
           pagesAttempted={5}
           pagesExtractedOk={5}
           inspectedPages={[

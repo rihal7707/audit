@@ -25,6 +25,7 @@ export interface PublicReportDto {
     extractionStatus: string;
   }>;
   hasSupplementText: boolean;
+  challenges: string[];
   consultRequested: boolean;
   pilotRequested: boolean;
   createdAt: string;
@@ -52,6 +53,16 @@ export function serializePublicReportDto(
     }
   }
 
+  let challenges: string[] = [];
+  try {
+    const raw = JSON.parse(audit.challenges);
+    if (Array.isArray(raw)) {
+      challenges = raw.filter((c): c is string => typeof c === 'string');
+    }
+  } catch {
+    challenges = [];
+  }
+
   return {
     publicToken: audit.publicToken,
     businessName: audit.businessName,
@@ -70,6 +81,7 @@ export function serializePublicReportDto(
       extractionStatus: p.extractionStatus,
     })),
     hasSupplementText: Boolean(audit.supplementText && audit.supplementText.trim().length > 0),
+    challenges,
     consultRequested: Boolean(audit.consultRequestedAt),
     pilotRequested: Boolean(audit.pilotRequestedAt),
     createdAt: audit.createdAt,

@@ -1,37 +1,191 @@
 // src/lib/report/section-config.ts
-// Shared ordered list of report sections.
-// Data-only: no component imports so it can be used server-side and client-side.
+// Single shared configuration driving report body sections, desktop contents rail,
+// mobile Contents sheet, scroll-spy, print view, and landing "What's included" list.
+
+import type { AuditReport } from '@/lib/ai/report-schema';
 
 export interface SectionDef {
-  id: string;       // slug for scroll-spy, hash, and element id
-  title: string;    // human-readable; numbering generated from array index
+  id: string;
+  /** Full heading shown in the report body */
+  title: string;
+  /** Compact label for the Contents rail */
+  tocTitle: string;
+  /** Group on landing page Deliverable Breakdown */
+  landingGroup: 'Understand' | 'Automate' | 'Act on it';
+  /** 'section' renders in report body & print; 'panel' opens/focuses the side assistant drawer */
+  kind: 'section' | 'panel';
   premium?: boolean;
-  /** key on AuditReport to check; if set and falsy the section is hidden */
-  reportKey?: string;
+  /** Optional visibility predicate checked against the report object */
+  visible?: (report: AuditReport) => boolean;
 }
 
-export const REPORT_SECTIONS: SectionDef[] = [
-  { id: 'executive-summary',        title: 'Executive summary' },
-  { id: 'audit-snapshot',           title: 'Audit snapshot' },
-  { id: 'website-analysis',         title: 'Website analysis' },
-  { id: 'automation-opportunities', title: 'Automation opportunities' },
-  { id: 'ai-agents',               title: 'Recommended AI agents' },
-  { id: 'roi-simulator',           title: 'Calculate Your Automation Potential' },
-  { id: 'implementation-roadmap',   title: 'Implementation roadmap' },
-  { id: 'assumptions-limitations',  title: 'Assumptions & limitations' },
-  { id: 'next-steps',              title: 'Next steps' },
-  // premium add-ons – shown only when present in report data
-  { id: 'draft-assets',      title: 'Draft assets',      premium: true, reportKey: 'draftAssets' },
-  { id: 'visitor-journey',   title: 'Visitor journey',   premium: true, reportKey: 'visitorJourney' },
-  { id: 'quick-wins',        title: 'Quick wins',        premium: true, reportKey: 'quickWins' },
-  { id: 'pilot-proposal',    title: 'Pilot proposal',    premium: true, reportKey: 'pilotProposal' },
+export const REPORT_SECTIONS: readonly SectionDef[] = [
+  {
+    id: 'executive-summary',
+    title: 'Executive summary',
+    tocTitle: 'Executive summary',
+    landingGroup: 'Understand',
+    kind: 'section',
+  },
+  {
+    id: 'audit-snapshot',
+    title: 'Audit snapshot',
+    tocTitle: 'Audit snapshot',
+    landingGroup: 'Understand',
+    kind: 'section',
+  },
+  {
+    id: 'website-analysis',
+    title: 'Website analysis',
+    tocTitle: 'Website analysis',
+    landingGroup: 'Understand',
+    kind: 'section',
+  },
+  {
+    id: 'automation-opportunities',
+    title: 'Automation opportunities',
+    tocTitle: 'Automation opportunities',
+    landingGroup: 'Automate',
+    kind: 'section',
+  },
+  {
+    id: 'ai-agents',
+    title: 'Recommended AI agents',
+    tocTitle: 'Recommended AI agents',
+    landingGroup: 'Automate',
+    kind: 'section',
+  },
+  {
+    id: 'roi',
+    title: 'Calculate Your Automation Potential',
+    tocTitle: 'ROI Simulator',
+    landingGroup: 'Act on it',
+    kind: 'section',
+  },
+  {
+    id: 'draft-assets',
+    title: 'Draft assets',
+    tocTitle: 'Draft assets',
+    landingGroup: 'Automate',
+    kind: 'section',
+    premium: true,
+    visible: (r) => Boolean((r as Record<string, unknown>).draftAssets),
+  },
+  {
+    id: 'visitor-journey',
+    title: 'Visitor journey',
+    tocTitle: 'Visitor journey',
+    landingGroup: 'Understand',
+    kind: 'section',
+    premium: true,
+    visible: (r) => Boolean((r as Record<string, unknown>).visitorJourney),
+  },
+  {
+    id: 'quick-wins',
+    title: 'Quick wins',
+    tocTitle: 'Quick wins',
+    landingGroup: 'Act on it',
+    kind: 'section',
+    premium: true,
+    visible: (r) => Boolean((r as Record<string, unknown>).quickWins),
+  },
+  {
+    id: 'implementation-roadmap',
+    title: 'Implementation roadmap',
+    tocTitle: 'Implementation roadmap',
+    landingGroup: 'Act on it',
+    kind: 'section',
+  },
+  {
+    id: 'assumptions-limitations',
+    title: 'Assumptions & limitations',
+    tocTitle: 'Assumptions & limitations',
+    landingGroup: 'Act on it',
+    kind: 'section',
+  },
+  {
+    id: 'next-steps',
+    title: 'Next steps',
+    tocTitle: 'Next steps',
+    landingGroup: 'Act on it',
+    kind: 'section',
+  },
+  {
+    id: 'pilot-proposal',
+    title: 'Pilot proposal',
+    tocTitle: 'Pilot proposal',
+    landingGroup: 'Act on it',
+    kind: 'section',
+    premium: true,
+    visible: (r) => Boolean((r as Record<string, unknown>).pilotProposal),
+  },
+  {
+    id: 'assistant',
+    title: 'Ask Your AI Business Consultant',
+    tocTitle: 'Ask Your AI Consultant',
+    landingGroup: 'Act on it',
+    kind: 'panel',
+  },
 ];
 
-/** Build the numbered TOC from the shared config, optionally filtering by report data */
-export function buildToc(report?: Record<string, unknown>): Array<{ id: string; label: string }> {
-  const visible = REPORT_SECTIONS.filter((s) => {
-    if (!s.reportKey || !report) return !s.premium; // core sections always visible
-    return Boolean(report[s.reportKey]);
+export interface NumberedSectionEntry extends SectionDef {
+  number: number;
+  paddedNumber: string;
+  numberedLabel: string;
+}
+
+export function getVisibleBodySections(report?: AuditReport): NumberedSectionEntry[] {
+  const list = REPORT_SECTIONS.filter((s) => {
+    if (s.kind !== 'section') return false;
+    if (s.visible) return report ? s.visible(report) : false;
+    return !s.premium;
   });
-  return visible.map((s, i) => ({ id: s.id, label: `${i + 1}. ${s.title}` }));
+  return list.map((s, idx) => {
+    const num = idx + 1;
+    const padded = String(num).padStart(2, '0');
+    return {
+      ...s,
+      number: num,
+      paddedNumber: padded,
+      numberedLabel: `${num}. ${s.tocTitle}`,
+    };
+  });
+}
+
+export function getTocEntries(report?: AuditReport): Array<{
+  id: string;
+  label: string;
+  title: string;
+  kind: 'section' | 'panel';
+  number?: number;
+}> {
+  const body = getVisibleBodySections(report).map((s) => ({
+    id: s.id,
+    label: s.numberedLabel,
+    title: s.title,
+    kind: 'section' as const,
+    number: s.number,
+  }));
+  const panels = REPORT_SECTIONS.filter((s) => s.kind === 'panel').map((s) => ({
+    id: s.id,
+    label: s.tocTitle,
+    title: s.title,
+    kind: 'panel' as const,
+  }));
+  return [...body, ...panels];
+}
+
+export function getLandingIncludedSections(): Array<{
+  id: string;
+  num: string;
+  label: string;
+  group: SectionDef['landingGroup'];
+}> {
+  const items = REPORT_SECTIONS.filter((s) => !s.premium);
+  return items.map((s, i) => ({
+    id: s.id,
+    num: String(i + 1).padStart(2, '0'),
+    label: s.id === 'roi' ? `${s.tocTitle} (${s.title})` : s.title,
+    group: s.landingGroup,
+  }));
 }

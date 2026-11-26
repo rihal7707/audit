@@ -35,12 +35,26 @@ import { Textarea, Input } from '@/components/ui/form-fields';
 import { useToast } from '@/components/ui/toast';
 import { BrandWordmark } from '@/components/layout/site-header';
 import { WorkflowDiagram } from './workflow-diagram';
-import { ImpactEstimator } from './impact-estimator';
+import { RoiSimulator } from '@/components/roi/roi-simulator';
+import {
+  WILLOW_CREEK_SAMPLE_ROI_INPUTS,
+  WILLOW_CREEK_SAMPLE_SCENARIOS,
+} from '@/lib/sample/willow-creek';
+import { getTocEntries, getVisibleBodySections } from '@/lib/report/section-config';
+
+export interface IntentContextPayload {
+  source: 'ROI' | 'ASSISTANT' | 'REPORT';
+  scenario?: string;
+  opportunityId?: string;
+  findingId?: string;
+  lastMessage?: string;
+}
 
 export interface ReportViewProps {
   report: AuditReport;
   isSample?: boolean;
   publicToken?: string;
+  challenges?: string[];
   pagesAttempted?: number;
   pagesExtractedOk?: number;
   inspectedPages?: Array<{
@@ -57,13 +71,6 @@ export interface ReportViewProps {
   onSupplementSubmitted?: (progressUrl: string) => void;
 }
 
-// Dynamic TOC generated from shared config
-import { REPORT_SECTIONS } from '@/lib/report/section-config';
-
-const REPORT_TOC = REPORT_SECTIONS
-  .filter((s) => !s.premium)
-  .map((s, i) => ({ id: s.id, label: `${i + 1}. ${s.title}` }));
-
 function safeDisplayHostPath(urlStr: string): string {
   try {
     const u = new URL(urlStr);
@@ -77,6 +84,7 @@ export function ReportView({
   report,
   isSample = false,
   publicToken,
+  challenges = [],
   pagesAttempted = 5,
   pagesExtractedOk = 5,
   inspectedPages,
@@ -88,6 +96,12 @@ export function ReportView({
   onSupplementSubmitted,
 }: ReportViewProps) {
   const { pushToast } = useToast();
+  const bodySections = React.useMemo(() => getVisibleBodySections(report), [report]);
+  const tocEntries = React.useMemo(() => getTocEntries(report), [report]);
+  const sectionMap = React.useMemo(
+    () => new Map(bodySections.map((s) => [s.id, s])),
+    [bodySections],
+  );
   const [activeSection, setActiveSection] = React.useState('executive-summary');
   const [priorityFilter, setPriorityFilter] = React.useState<'ALL' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL');
   const [collapsedCategories, setCollapsedCategories] = React.useState<Record<string, boolean>>({});
@@ -97,6 +111,8 @@ export function ReportView({
   const [intentModal, setIntentModal] = React.useState<'DISCUSS' | 'PILOT' | null>(null);
   const [intentMessage, setIntentMessage] = React.useState('');
   const [intentTime, setIntentTime] = React.useState('');
+  const [preferredContactMethod, setPreferredContactMethod] = React.useState<'email' | 'phone' | 'either'>('either');
+  const [intentContext, setIntentContext] = React.useState<IntentContextPayload | undefined>(undefined);
   const [intentSubmitting, setIntentSubmitting] = React.useState(false);
   const [consultRequested, setConsultRequested] = React.useState(initialConsult);
   const [pilotRequested, setPilotRequested] = React.useState(initialPilot);
@@ -130,12 +146,13 @@ export function ReportView({
       { rootMargin: '-15% 0px -70% 0px' },
     );
 
-    for (const item of REPORT_TOC) {
+    for (const item of tocEntries) {
+      if (item.kind !== 'section') continue;
       const el = document.getElementById(item.id);
       if (el) observer.observe(el);
     }
     return () => observer.disconnect();
-  }, []);
+  }, [tocEntries]);
 
   const toggleCategory = (category: string) => {
     setCollapsedCategories((prev) => ({ ...prev, [category]: !prev[category] }));
@@ -165,6 +182,8 @@ export function ReportView({
           type: intentModal,
           message: intentMessage.trim() || undefined,
           preferredTime: intentTime.trim() || undefined,
+          preferredContactMethod,
+          context: intentContext,
         }),
       });
       const json = await res.json();
@@ -177,6 +196,7 @@ export function ReportView({
       setIntentModal(null);
       setIntentMessage('');
       setIntentTime('');
+      setIntentContext(undefined);
       pushToast('Thank you! Your request has been shared with the Amarketing team.');
     } catch {
       pushToast('Network error while recording your request.', 'error');
@@ -185,12 +205,12 @@ export function ReportView({
     }
   };
 
-  const handleBookCallClick = async () => {
+  const handleBookCallClick = async (ctx?: IntentContextPayload) => {
     if (!isSample && publicToken && !isAdminPreview) {
       void fetch(`/api/reports/${publicToken}/intent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'BOOKING_CLICK' }),
+        body: JSON.stringify({ type: 'BOOKING_CLICK', context: ctx }),
       }).catch(() => {});
     }
 
@@ -384,7 +404,7 @@ export function ReportView({
                 Report Contents
               </p>
               <nav aria-label="Report sections" className="mt-3 flex flex-col gap-1">
-                {REPORT_TOC.map((item) => {
+                {tocEntries.map((item) => {
                   const active = activeSection === item.id;
                   return (
                     <a
@@ -449,7 +469,7 @@ export function ReportView({
             <section id="executive-summary" className="scroll-mt-24 space-y-6">
               <div className="border-b border-border pb-3">
                 <span className="text-xs font-semibold uppercase tracking-wider text-teal-700">
-                  Section 01
+                  Section {sectionMap.get('executive-summary')?.paddedNumber ?? '01'}
                 </span>
                 <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">
                   Executive Summary
@@ -518,7 +538,7 @@ export function ReportView({
             <section id="audit-snapshot" className="scroll-mt-24 space-y-5">
               <div className="border-b border-border pb-3">
                 <span className="text-xs font-semibold uppercase tracking-wider text-teal-700">
-                  Section 02
+                  Section {sectionMap.get('audit-snapshot')?.paddedNumber ?? '02'}
                 </span>
                 <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">
                   Audit Snapshot
@@ -549,7 +569,7 @@ export function ReportView({
               <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-3">
                 <div>
                   <span className="text-xs font-semibold uppercase tracking-wider text-teal-700">
-                    Section 03
+                    Section {sectionMap.get('website-analysis')?.paddedNumber ?? '03'}
                   </span>
                   <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">
                     Website &amp; Operations Findings
@@ -703,7 +723,7 @@ export function ReportView({
             <section id="automation-opportunities" className="scroll-mt-24 space-y-5">
               <div className="border-b border-border pb-3">
                 <span className="text-xs font-semibold uppercase tracking-wider text-teal-700">
-                  Section 04
+                  Section {sectionMap.get('automation-opportunities')?.paddedNumber ?? '04'}
                 </span>
                 <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">
                   Automation Opportunities
@@ -781,7 +801,7 @@ export function ReportView({
             <section id="ai-agents" className="scroll-mt-24 space-y-5">
               <div className="border-b border-border pb-3">
                 <span className="text-xs font-semibold uppercase tracking-wider text-teal-700">
-                  Section 05
+                  Section {sectionMap.get('ai-agents')?.paddedNumber ?? '05'}
                 </span>
                 <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">
                   Recommended AI Agents
@@ -815,16 +835,45 @@ export function ReportView({
                   );
                 })}
               </div>
-
-              {/* Client-side optional impact estimator */}
-              <ImpactEstimator />
             </section>
 
-            {/* 6. Implementation Roadmap */}
+            {/* 6. Calculate Your Automation Potential (ROI Simulator) */}
+            <section id="roi" className="scroll-mt-24 space-y-5">
+              <div className="border-b border-border pb-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-teal-700">
+                  Section {sectionMap.get('roi')?.paddedNumber ?? '06'}
+                </span>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">
+                  {sectionMap.get('roi')?.title ?? 'Calculate Your Automation Potential'}
+                </h2>
+              </div>
+
+              <RoiSimulator
+                mode={isAdminPreview ? 'preview' : isSample ? 'sample' : 'live'}
+                businessName={report.businessOverview.businessName}
+                publicToken={publicToken}
+                challenges={challenges}
+                initialInputs={isSample ? WILLOW_CREEK_SAMPLE_ROI_INPUTS : undefined}
+                initialScenarios={isSample ? WILLOW_CREEK_SAMPLE_SCENARIOS : undefined}
+                onDiscussRoi={({ scenario, summaryText }) => {
+                  setIntentContext({ source: 'ROI', scenario });
+                  setIntentMessage(summaryText.slice(0, 900));
+                  setIntentModal('DISCUSS');
+                }}
+                onRequestPilot={({ scenario, summaryText }) => {
+                  setIntentContext({ source: 'ROI', scenario });
+                  setIntentMessage(summaryText.slice(0, 900));
+                  setIntentModal('PILOT');
+                }}
+                onBookCall={(scenario) => handleBookCallClick({ source: 'ROI', scenario })}
+              />
+            </section>
+
+            {/* 7. Implementation Roadmap */}
             <section id="implementation-roadmap" className="scroll-mt-24 space-y-5">
               <div className="border-b border-border pb-3">
                 <span className="text-xs font-semibold uppercase tracking-wider text-teal-700">
-                  Section 06
+                  Section {sectionMap.get('implementation-roadmap')?.paddedNumber ?? '07'}
                 </span>
                 <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">
                   30 / 60 / 90-Day Implementation Roadmap
@@ -868,11 +917,11 @@ export function ReportView({
               </div>
             </section>
 
-            {/* 7. Assumptions & Limitations */}
+            {/* Assumptions & Limitations */}
             <section id="assumptions-limitations" className="scroll-mt-24 space-y-5">
               <div className="border-b border-border pb-3">
                 <span className="text-xs font-semibold uppercase tracking-wider text-teal-700">
-                  Section 07
+                  Section {sectionMap.get('assumptions-limitations')?.paddedNumber ?? '08'}
                 </span>
                 <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">
                   Assumptions &amp; Limitations
@@ -956,11 +1005,11 @@ export function ReportView({
               )}
             </section>
 
-            {/* 8. Next Steps CTA Band */}
+            {/* Next Steps CTA Band */}
             <section id="next-steps" className="scroll-mt-24">
               <div className="print-cover hero-gradient rounded-xl p-8 text-white shadow-md">
                 <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                  Section 08 — Recommended Next Steps
+                  Section {sectionMap.get('next-steps')?.paddedNumber ?? '09'} — Recommended Next Steps
                 </span>
                 <h2 className="mt-2 font-serif text-2xl sm:text-3xl font-semibold text-white">
                   Let&apos;s Discuss Your Business Opportunities
@@ -983,7 +1032,7 @@ export function ReportView({
                 </ul>
 
                 <div className="no-print mt-7 flex flex-wrap gap-3">
-                  <Button variant="cta" size="lg" onClick={handleBookCallClick}>
+                  <Button variant="cta" size="lg" onClick={() => handleBookCallClick({ source: 'REPORT' })}>
                     <Calendar className="h-4 w-4" aria-hidden="true" />
                     Book a Free Strategy Call
                   </Button>
@@ -991,7 +1040,10 @@ export function ReportView({
                     variant="outline"
                     size="lg"
                     className="border-white/25 bg-white/10 text-white hover:bg-white/20"
-                    onClick={() => setIntentModal('DISCUSS')}
+                    onClick={() => {
+                      setIntentContext({ source: 'REPORT' });
+                      setIntentModal('DISCUSS');
+                    }}
                   >
                     <MessageSquare className="h-4 w-4" aria-hidden="true" />
                     {consultRequested ? 'Audit Discussion Requested' : 'Discuss My Audit'}
@@ -1000,7 +1052,10 @@ export function ReportView({
                     variant="outline"
                     size="lg"
                     className="border-white/25 bg-white/10 text-white hover:bg-white/20"
-                    onClick={() => setIntentModal('PILOT')}
+                    onClick={() => {
+                      setIntentContext({ source: 'REPORT' });
+                      setIntentModal('PILOT');
+                    }}
                   >
                     <Rocket className="h-4 w-4" aria-hidden="true" />
                     {pilotRequested ? 'Pilot Requested' : 'Request a Pilot'}
@@ -1057,7 +1112,7 @@ export function ReportView({
         title="Report Contents"
       >
         <nav className="flex flex-col gap-1">
-          {REPORT_TOC.map((item) => (
+          {tocEntries.map((item) => (
             <a
               key={item.id}
               href={`#${item.id}`}
@@ -1073,14 +1128,41 @@ export function ReportView({
       {/* Discuss / Request Pilot Modal */}
       <ModalDialog
         open={intentModal !== null}
-        onOpenChange={(open) => !open && setIntentModal(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIntentModal(null);
+            setIntentContext(undefined);
+          }
+        }}
         title={intentModal === 'PILOT' ? 'Request a Focused AI Pilot' : 'Discuss Your Audit'}
         description="Let the Amarketing team know how you would like to follow up — no obligation."
       >
         <form onSubmit={handleIntentSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <span className="block text-sm font-medium text-ink">Preferred contact method</span>
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Preferred contact method">
+              {(['email', 'phone', 'either'] as const).map((method) => (
+                <button
+                  key={method}
+                  type="button"
+                  role="radio"
+                  aria-checked={preferredContactMethod === method}
+                  onClick={() => setPreferredContactMethod(method)}
+                  className={cn(
+                    'min-h-[40px] rounded border px-3 text-xs font-medium capitalize transition-colors cursor-pointer',
+                    preferredContactMethod === method
+                      ? 'border-navy-900 bg-navy-900 text-white'
+                      : 'border-border bg-surface text-ink hover:bg-subtle',
+                  )}
+                >
+                  {method}
+                </button>
+              ))}
+            </div>
+          </div>
           <Input
-            label="Preferred contact time or channel (optional)"
-            placeholder="e.g. Weekday mornings via email or phone"
+            label="Preferred contact time (optional)"
+            placeholder="e.g. Weekday mornings"
             value={intentTime}
             onChange={(e) => setIntentTime(e.target.value)}
           />

@@ -145,6 +145,7 @@ export function CustomerReportClient({ token }: { token: string }) {
     <ReportView
       report={dto.report}
       publicToken={dto.publicToken}
+      challenges={dto.challenges}
       pagesAttempted={dto.pagesAttempted}
       pagesExtractedOk={dto.pagesExtractedOk}
       inspectedPages={dto.inspectedPages}
