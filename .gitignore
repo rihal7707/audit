@@ -43,3 +43,6 @@ data/
 playwright-report/
 test-results/
 
+
+.vercel
+.env*
