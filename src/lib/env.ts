@@ -66,6 +66,21 @@ export type AppEnv = z.infer<typeof envSchema>;
 let cachedEnv: AppEnv | null = null;
 let cachedEnvFingerprint: string | null = null;
 
+const rawEnvWithFallbacks = () => {
+  const raw = { ...process.env };
+  const primaryDb = raw.DATABASE_URL?.trim();
+  const tursoDb = raw.TURSO_DATABASE_URL?.trim() || raw.LIBSQL_DATABASE_URL?.trim() || raw.LIBSQL_URL?.trim();
+  if ((!primaryDb || primaryDb.startsWith('file:')) && tursoDb) {
+    raw.DATABASE_URL = tursoDb;
+  }
+  const primaryToken = raw.DATABASE_AUTH_TOKEN?.trim();
+  const tursoToken = raw.TURSO_AUTH_TOKEN?.trim() || raw.LIBSQL_AUTH_TOKEN?.trim();
+  if (!primaryToken && tursoToken) {
+    raw.DATABASE_AUTH_TOKEN = tursoToken;
+  }
+  return raw;
+};
+
 function computeEnvFingerprint(): string {
   return [
     process.env.NODE_ENV,
@@ -74,6 +89,12 @@ function computeEnvFingerprint(): string {
     process.env.GEMINI_FALLBACK_MODEL,
     process.env.GEMINI_PAID_TIER,
     process.env.DATABASE_URL,
+    process.env.DATABASE_AUTH_TOKEN,
+    process.env.TURSO_DATABASE_URL,
+    process.env.TURSO_AUTH_TOKEN,
+    process.env.LIBSQL_DATABASE_URL,
+    process.env.LIBSQL_URL,
+    process.env.LIBSQL_AUTH_TOKEN,
     process.env.ADMIN_PASSWORD,
     process.env.ADMIN_PASSWORD_HASH,
     process.env.ADMIN_SESSION_SECRET,
@@ -92,7 +113,7 @@ function computeEnvFingerprint(): string {
 export function getEnv(): AppEnv {
   const fp = computeEnvFingerprint();
   if (cachedEnv && cachedEnvFingerprint === fp) return cachedEnv;
-  const parsed = envSchema.safeParse(process.env);
+  const parsed = envSchema.safeParse(rawEnvWithFallbacks());
   if (!parsed.success) {
     const issueSummary = parsed.error.issues
       .map((i) => `${i.path.join('.')}: ${i.message}`)

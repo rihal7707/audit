@@ -2,10 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { GoogleGenAI } from '@google/genai';
 
-// Increase timeout and retry attempts to improve reliability
-const DEFAULT_TIMEOUT = 60_000; // 60 seconds
-const RETRY_ATTEMPTS = 2;
-
 function loadDotEnvLocal() {
   for (const filename of ['.env.local', '.env']) {
     const filePath = path.resolve(process.cwd(), filename);

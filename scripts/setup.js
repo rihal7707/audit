@@ -1,10 +1,7 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
-
 // Cross‑platform setup script for AMARKETING audit platform
 // Generates .env.local from .env.example, creates secrets, data folder, runs migrations,
 // and prints a checklist of missing required variables.
 
-/* eslint-disable-next-line @typescript-eslint/no-require-imports */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -51,7 +48,7 @@ function runMigrations() {
     console.log('Running database migrations...');
     execSync('npm run db:migrate', { stdio: 'inherit', cwd: projectRoot });
     console.log('Migrations completed.');
-  } catch (e) {
+  } catch {
     console.error('Migration step failed.');
   }
 }

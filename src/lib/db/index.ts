@@ -34,6 +34,19 @@ async function applySqlitePragmas(client: Client): Promise<void> {
   }
 }
 
+async function ensureRemoteSchemaReady(client: Client): Promise<void> {
+  try {
+    const check = await client.execute(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'audits' LIMIT 1",
+    );
+    if (check.rows.length > 0) return;
+    const { runMigrations } = await import('./migrate');
+    await runMigrations(drizzle(client, { schema }));
+  } catch {
+    // Migration/bootstrap errors will surface on actual query or health check
+  }
+}
+
 function ensureLocalFileDirectory(databaseUrl: string): void {
   if (!databaseUrl.startsWith('file:')) return;
   const rawPath = databaseUrl.slice('file:'.length).split('?')[0] ?? '';
@@ -69,6 +82,8 @@ export function getDbClient(): Client {
     singletonClient = createLibsqlClient(env.DATABASE_URL, env.DATABASE_AUTH_TOKEN);
     if (isPersistentFileDb(env.DATABASE_URL)) {
       singletonPragmaPromise = applySqlitePragmas(singletonClient);
+    } else if (!env.DATABASE_URL.startsWith('file:')) {
+      singletonPragmaPromise = ensureRemoteSchemaReady(singletonClient);
     }
   }
   return singletonClient;

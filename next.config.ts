@@ -22,6 +22,12 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   serverExternalPackages: ['pino', 'undici', '@libsql/client'],
+  outputFileTracingIncludes: {
+    '/api/**': ['./drizzle/**/*'],
+    '/admin/**': ['./drizzle/**/*'],
+    '/audit/**': ['./drizzle/**/*'],
+    '/report/**': ['./drizzle/**/*'],
+  },
   async headers() {
     const securityHeaders = [
       { key: 'Content-Security-Policy', value: cspDirectives },

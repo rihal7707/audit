@@ -426,6 +426,29 @@ describe('API Validation, Region Guard, Dedupe, Public DTO & Funnel/CSV', () => 
       else process.env.VERCEL_URL = prevVercelUrl;
     }
 
+    // Supports TURSO_DATABASE_URL + TURSO_AUTH_TOKEN fallback when DATABASE_URL points to local file
+    const { getEnv } = await import('@/lib/env');
+    const prevDbUrl = process.env.DATABASE_URL;
+    const prevTursoUrl = process.env.TURSO_DATABASE_URL;
+    const prevTursoToken = process.env.TURSO_AUTH_TOKEN;
+    try {
+      process.env.DATABASE_URL = 'file:./data/amarketing.db';
+      process.env.TURSO_DATABASE_URL = 'libsql://amarketing-test.turso.io';
+      process.env.TURSO_AUTH_TOKEN = 'test-turso-token';
+      resetEnvCache();
+      const resolvedEnv = getEnv();
+      expect(resolvedEnv.DATABASE_URL).toBe('libsql://amarketing-test.turso.io');
+      expect(resolvedEnv.DATABASE_AUTH_TOKEN).toBe('test-turso-token');
+    } finally {
+      if (prevDbUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDbUrl;
+      if (prevTursoUrl === undefined) delete process.env.TURSO_DATABASE_URL;
+      else process.env.TURSO_DATABASE_URL = prevTursoUrl;
+      if (prevTursoToken === undefined) delete process.env.TURSO_AUTH_TOKEN;
+      else process.env.TURSO_AUTH_TOKEN = prevTursoToken;
+      resetEnvCache();
+    }
+
     // Keep unused reference used cleanly
     expect(WILLOW_CREEK_SAMPLE_REPORT.businessOverview.businessName).toBe(
       'Willow Creek Orthodontics',
