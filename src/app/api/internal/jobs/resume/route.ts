@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { type NextRequest } from 'next/server';
 import { getEnv } from '@/lib/env';
+import { ensureDbReady } from '@/lib/db';
 import {
   countAuditsSince,
   findResumableAudits,
@@ -31,6 +32,8 @@ export async function POST(request: NextRequest) {
   if (!verifyCronSecret(request, env.CRON_SECRET)) {
     return apiError('Unauthorized cron request.', 401, requestId);
   }
+
+  await ensureDbReady();
 
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
@@ -83,4 +86,6 @@ export async function POST(request: NextRequest) {
     requestId,
   );
 }
+
+export { POST as GET };
 

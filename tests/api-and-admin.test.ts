@@ -13,11 +13,13 @@ import { serializePublicReportDto } from '@/lib/reports/public-dto';
 import { buildAuditsCsv, sanitizeCsvCell } from '@/lib/admin/csv-export';
 import { WILLOW_CREEK_SAMPLE_REPORT } from '@/lib/sample/willow-creek';
 import { POST as submitAuditRoute } from '@/app/api/audits/route';
+import { POST as precheckRoute } from '@/app/api/audits/precheck/route';
+import { GET as healthRoute } from '@/app/api/health/route';
 import { GET as getReportRoute, DELETE as deleteReportRoute } from '@/app/api/reports/[token]/route';
 import { POST as recordIntentRoute } from '@/app/api/reports/[token]/intent/route';
 import { POST as adminLoginRoute } from '@/app/api/admin/login/route';
 import { PATCH as adminPatchAuditRoute } from '@/app/api/admin/audits/[id]/route';
-import { POST as cronResumeRoute } from '@/app/api/internal/jobs/resume/route';
+import { GET as cronGetResumeRoute, POST as cronResumeRoute } from '@/app/api/internal/jobs/resume/route';
 import { ADMIN_COOKIE_NAME, signAdminSessionToken } from '@/lib/security/admin-session-token';
 import { ADMIN_CSRF_HEADER } from '@/lib/security/admin-auth';
 
@@ -370,6 +372,60 @@ describe('API Validation, Region Guard, Dedupe, Public DTO & Funnel/CSV', () => 
       }),
     );
     expect(cronOk.status).toBe(200);
+
+    const cronGetOk = await cronGetResumeRoute(
+      makeJsonReq('http://localhost:3000/api/internal/jobs/resume', 'GET', undefined, {
+        authorization: 'Bearer cron-secret-value-123456',
+      }),
+    );
+    expect(cronGetOk.status).toBe(200);
+
+    // Health check reports schemaReady & database connected
+    const healthRes = await healthRoute();
+    expect(healthRes.status).toBe(200);
+    const healthJson = (await healthRes.json()) as {
+      application: string;
+      database: string;
+      schemaReady: boolean;
+    };
+    expect(healthJson.application).toBe('healthy');
+    expect(healthJson.database).toBe('connected');
+    expect(healthJson.schemaReady).toBe(true);
+
+    // Precheck returns URL_INVALID on malformed/private URL without crashing
+    const preInvalid = await precheckRoute(
+      makeJsonReq('http://localhost:3000/api/audits/precheck', 'POST', {
+        url: 'http://127.0.0.1/admin',
+      }),
+    );
+    expect(preInvalid.status).toBe(200);
+    const preJson = (await preInvalid.json()) as { urlStatus: string; reachable: boolean };
+    expect(preJson.reachable).toBe(false);
+    expect(preJson.urlStatus).toBe('URL_INVALID');
+
+    // Vercel Preview origin check allows active VERCEL_URL origin while rejecting unknown origins
+    const prevVercelUrl = process.env.VERCEL_URL;
+    process.env.VERCEL_URL = 'ai-audit-preview.vercel.app';
+    try {
+      const previewPatch = await adminPatchAuditRoute(
+        makeJsonReq(
+          `https://ai-audit-preview.vercel.app/api/admin/audits/${a1.id}`,
+          'PATCH',
+          { pipelineStage: 'QUALIFIED' },
+          {
+            cookie: `${ADMIN_COOKIE_NAME}=${jwt}`,
+            origin: 'https://ai-audit-preview.vercel.app',
+            [ADMIN_CSRF_HEADER]: '1',
+          },
+        ),
+        { params: Promise.resolve({ id: String(a1.id) }) },
+      );
+      expect(previewPatch.status).toBe(200);
+    } finally {
+      if (prevVercelUrl === undefined) delete process.env.VERCEL_URL;
+      else process.env.VERCEL_URL = prevVercelUrl;
+    }
+
     // Keep unused reference used cleanly
     expect(WILLOW_CREEK_SAMPLE_REPORT.businessOverview.businessName).toBe(
       'Willow Creek Orthodontics',

@@ -74,7 +74,7 @@ function createRealGeminiClient(apiKey: string): AiModelClient {
   const ai = new GoogleGenAI({
     apiKey,
     httpOptions: {
-      timeout: 35_000,
+      timeout: 26_000,
       retryOptions: { attempts: 1 },
     },
   });
@@ -125,7 +125,7 @@ async function callModelWithFallback(
     return { rawText, usedModel: primaryModel };
   } catch (err) {
     const status = getHttpStatusFromError(err);
-    if (status === 429 || status === 503) {
+    if (status === 429 || status === 503 || status === 404) {
       if (fallbackModel && fallbackModel !== primaryModel) {
         try {
           const rawText = await client.generateText({

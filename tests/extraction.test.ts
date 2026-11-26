@@ -129,6 +129,100 @@ describe('Deterministic Signal Detection & HTML Extraction', () => {
   });
 });
 
+describe('Website Precheck Reachability, Status & Edge Cases', () => {
+  let edgePort = 0;
+  let edgeServer: http.Server;
+
+  beforeAll(async () => {
+    edgeServer = http.createServer((req, res) => {
+      if (req.url === '/robots.txt') {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end();
+        return;
+      }
+      if (req.url === '/status-403') {
+        res.writeHead(403, { 'Content-Type': 'text/html' });
+        res.end('<html><body>Forbidden</body></html>');
+        return;
+      }
+      if (req.url === '/status-429') {
+        res.writeHead(429, { 'Content-Type': 'text/html' });
+        res.end('<html><body>Too Many Requests</body></html>');
+        return;
+      }
+      if (req.url === '/status-500') {
+        res.writeHead(500, { 'Content-Type': 'text/html' });
+        res.end('<html><body>Server Error</body></html>');
+        return;
+      }
+      if (req.url === '/bot-captcha') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><body><form action="/errors/validateCaptcha">Are you a robot?</form></body></html>');
+        return;
+      }
+      if (req.url === '/large-home') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<html><head><title>Large Store</title></head><body><main>${'Hello world '.repeat(30_000)}</main></body></html>`);
+        return;
+      }
+      if (req.url === '/redirect-ok') {
+        res.writeHead(302, { Location: `http://127.0.0.1:${edgePort}/large-home` });
+        res.end();
+        return;
+      }
+      res.writeHead(404, { 'Content-Type': 'text/html' });
+      res.end('Not Found');
+    });
+
+    await new Promise<void>((resolve) => {
+      edgeServer.listen(0, '127.0.0.1', () => {
+        const addr = edgeServer.address();
+        edgePort = typeof addr === 'object' && addr ? addr.port : 0;
+        resolve();
+      });
+    });
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => edgeServer.close(() => resolve()));
+  });
+
+  it('distinguishes invalid URLs, HTTP 403/429/404/500, bot protection, large HTML, and redirects', async () => {
+    const invalid = await precheckWebsite('ftp://example.com');
+    expect(invalid.reachable).toBe(false);
+    expect(invalid.urlStatus).toBe('URL_INVALID');
+
+    const dnsFail = await precheckWebsite('https://nonexistent.invalid.example', {
+      dnsLookup: async () => {
+        throw new Error('ENOTFOUND');
+      },
+    });
+    expect(dnsFail.reachable).toBe(false);
+    expect(dnsFail.urlStatus).toBe('URL_VALID_BUT_UNREACHABLE');
+
+    for (const pathName of ['/status-403', '/status-429', '/status-500', '/status-404']) {
+      const blocked = await precheckWebsite(`http://127.0.0.1:${edgePort}${pathName}`, {
+        allowLocalTestFixture: true,
+      });
+      expect(blocked.reachable).toBe(false);
+      expect(blocked.urlStatus).toBe('URL_VALID_BUT_UNREACHABLE');
+    }
+
+    const captcha = await precheckWebsite(`http://127.0.0.1:${edgePort}/bot-captcha`, {
+      allowLocalTestFixture: true,
+    });
+    expect(captcha.reachable).toBe(false);
+    expect(captcha.urlStatus).toBe('URL_VALID_BUT_UNREACHABLE');
+    expect(captcha.reason).toMatch(/bot protection/i);
+
+    const largeOk = await precheckWebsite(`http://127.0.0.1:${edgePort}/redirect-ok`, {
+      allowLocalTestFixture: true,
+    });
+    expect(largeOk.reachable).toBe(true);
+    expect(largeOk.urlStatus).toBe('WEBSITE_ACCESSIBLE');
+  });
+});
+
 describe('Website Crawler & Sitemap/Robots Integration', () => {
   let sitePort = 0;
   let blockedPort = 0;

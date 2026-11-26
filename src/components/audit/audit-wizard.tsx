@@ -88,6 +88,7 @@ const STEP_FIELDS: Record<number, Array<keyof AuditSubmissionInput>> = {
 interface PrecheckState {
   status: 'idle' | 'checking' | 'done';
   reachable?: boolean;
+  urlStatus?: 'URL_INVALID' | 'WEBSITE_ACCESSIBLE' | 'URL_VALID_BUT_UNREACHABLE';
   normalizedUrl?: string;
   finalHost?: string;
   redirectedCrossDomain?: boolean;
@@ -237,10 +238,14 @@ export function AuditWizard({
         body: JSON.stringify({ url: trimmed }),
       });
       if (!res.ok) {
+        const errBody = (await res.json().catch(() => null)) as { error?: string } | null;
         setPrecheck({
           status: 'done',
           reachable: false,
-          reason: "We couldn't check this URL automatically; we'll still run a limited assessment.",
+          urlStatus: res.status === 400 ? 'URL_INVALID' : 'URL_VALID_BUT_UNREACHABLE',
+          reason:
+            errBody?.error ||
+            "We couldn't check this URL automatically; we'll still run a limited assessment.",
         });
         return;
       }
@@ -250,6 +255,7 @@ export function AuditWizard({
       setPrecheck({
         status: 'done',
         reachable: false,
+        urlStatus: 'URL_VALID_BUT_UNREACHABLE',
         reason: "We couldn't reach the site right now; we'll still run a limited assessment.",
       });
     }
@@ -563,7 +569,7 @@ export function AuditWizard({
                       <div className="mt-2 space-y-2">
                         <p className="flex items-center gap-1.5 text-xs font-medium text-teal-700">
                           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                          Website reachable ({precheck.finalHost || precheck.normalizedUrl})
+                          Website accessible ({precheck.finalHost || precheck.normalizedUrl}) — we&apos;ll analyse your website and business information.
                         </p>
                         {precheck.redirectedCrossDomain && (
                           <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
@@ -586,11 +592,24 @@ export function AuditWizard({
                     )}
 
                     {precheck.status === 'done' && !precheck.reachable && (
-                      <p className="mt-2 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                        <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <p
+                        className={cn(
+                          'mt-2 flex items-start gap-1.5 rounded border px-3 py-2 text-xs',
+                          precheck.urlStatus === 'URL_INVALID'
+                            ? 'border-red-200 bg-red-50 text-red-800'
+                            : 'border-amber-200 bg-amber-50 text-amber-900',
+                        )}
+                      >
+                        {precheck.urlStatus === 'URL_INVALID' ? (
+                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        ) : (
+                          <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        )}
                         <span>
                           {precheck.reason ||
-                            "We couldn't reach this URL right now; we'll still run a limited assessment from your answers."}
+                            (precheck.urlStatus === 'URL_INVALID'
+                              ? 'Please enter a valid website address using HTTP or HTTPS.'
+                              : "Your website URL is valid, but automated access was restricted. We'll use the business information you provide to prepare a limited assessment.")}
                         </span>
                       </p>
                     )}

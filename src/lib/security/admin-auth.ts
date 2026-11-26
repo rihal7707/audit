@@ -105,16 +105,25 @@ export function verifyAdminCsrf(request: Request | NextRequest): {
   }
 
   const env = getEnv();
-  let expectedOrigin: string;
+  const allowedOrigins = new Set<string>();
   try {
-    expectedOrigin = new URL(env.NEXT_PUBLIC_APP_URL).origin;
+    allowedOrigins.add(new URL(env.NEXT_PUBLIC_APP_URL).origin);
   } catch {
     return { ok: false, reason: 'Server origin configuration is invalid.' };
+  }
+  for (const vercelHost of [
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ]) {
+    if (vercelHost && vercelHost.trim().length > 0) {
+      allowedOrigins.add(`https://${vercelHost.trim().replace(/^https?:\/\//i, '')}`);
+    }
   }
 
   const origin = request.headers.get('origin');
   if (origin) {
-    if (origin !== expectedOrigin) {
+    if (!allowedOrigins.has(origin)) {
       return { ok: false, reason: 'Request origin mismatch.' };
     }
     return { ok: true };
@@ -123,7 +132,7 @@ export function verifyAdminCsrf(request: Request | NextRequest): {
   const referer = request.headers.get('referer');
   if (referer) {
     try {
-      if (new URL(referer).origin === expectedOrigin) {
+      if (allowedOrigins.has(new URL(referer).origin)) {
         return { ok: true };
       }
     } catch {

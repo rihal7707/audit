@@ -18,6 +18,12 @@ function isPersistentFileDb(databaseUrl: string): boolean {
   return Boolean(rawPath) && rawPath !== ':memory:';
 }
 
+export function getDatabaseMode(databaseUrl?: string): 'remote-libsql' | 'memory' | 'local-file' {
+  const url = databaseUrl ?? getEnv().DATABASE_URL;
+  if (!url.startsWith('file:')) return 'remote-libsql';
+  return isPersistentFileDb(url) ? 'local-file' : 'memory';
+}
+
 async function applySqlitePragmas(client: Client): Promise<void> {
   try {
     await client.execute('PRAGMA busy_timeout = 5000;');
@@ -32,6 +38,11 @@ function ensureLocalFileDirectory(databaseUrl: string): void {
   if (!databaseUrl.startsWith('file:')) return;
   const rawPath = databaseUrl.slice('file:'.length).split('?')[0] ?? '';
   if (!rawPath || rawPath === ':memory:') return;
+  if (process.env.VERCEL === '1') {
+    throw new Error(
+      'DATABASE_URL points to a local SQLite file, which is unsupported on Vercel read-only serverless storage. Configure a hosted libSQL/Turso DATABASE_URL and DATABASE_AUTH_TOKEN.',
+    );
+  }
   const resolved = path.resolve(/*turbopackIgnore: true*/ process.cwd(), rawPath);
   const dir = path.dirname(resolved);
   if (!fs.existsSync(dir)) {

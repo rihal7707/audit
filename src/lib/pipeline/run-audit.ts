@@ -1,4 +1,5 @@
 import 'server-only';
+import { ensureDbReady } from '@/lib/db';
 import { getEnv, isGeminiConfigured } from '@/lib/env';
 import { createRequestLogger } from '@/lib/logger';
 import {
@@ -141,6 +142,7 @@ export async function runAuditPipeline(
   auditId: number,
   options: RunAuditOptions = {},
 ): Promise<{ status: AuditRow['auditStatus']; error?: string }> {
+  await ensureDbReady();
   const reqId = options.requestId || `pipeline-${auditId}`;
   const log = createRequestLogger(reqId, { auditId });
 

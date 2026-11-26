@@ -18,11 +18,17 @@ import { extractPageFromHtml, type ExtractedPageResult } from './extract-page';
 import { mergeSignalsAcrossPages, type DetectedSignal } from './signals';
 
 export const MAX_CRAWL_PAGES = 5;
-export const TOTAL_CRAWL_BUDGET_MS = 45_000;
+export const TOTAL_CRAWL_BUDGET_MS = 18_000;
 export const DEFAULT_POLITE_DELAY_MS = 350;
+
+export type PrecheckUrlStatus =
+  | 'URL_INVALID'
+  | 'WEBSITE_ACCESSIBLE'
+  | 'URL_VALID_BUT_UNREACHABLE';
 
 export interface PrecheckResult {
   reachable: boolean;
+  urlStatus: PrecheckUrlStatus;
   normalizedUrl: string;
   finalHost: string;
   finalRegistrableDomain: string;
@@ -182,6 +188,9 @@ async function fetchRobots(
   };
 }
 
+const BOT_CHALLENGE_REGEX =
+  /opfcaptcha|validateCaptcha|cf-browser-verification|cf-challenge|Checking your browser before accessing|Just a moment\.\.\.|Attention Required!\s*\|\s*Cloudflare|Access Denied|Are you a robot\?/i;
+
 export async function precheckWebsite(
   rawUrl: string,
   options: CrawlOptions = {},
@@ -194,10 +203,16 @@ export async function precheckWebsite(
       dnsLookup: options.dnsLookup,
     });
   } catch (err) {
+    const isDns = err instanceof UrlGuardError && err.code === 'DNS_RESOLUTION_FAILED';
     const message =
-      err instanceof UrlGuardError ? err.message : 'Website URL could not be validated.';
+      err instanceof UrlGuardError
+        ? isDns
+          ? 'Your website URL format is valid, but the domain could not be resolved right now. We will still prepare a limited assessment from your business answers.'
+          : err.message
+        : 'Please enter a valid website address using HTTP or HTTPS.';
     return {
       reachable: false,
+      urlStatus: isDns ? 'URL_VALID_BUT_UNREACHABLE' : 'URL_INVALID',
       normalizedUrl: withScheme,
       finalHost: '',
       finalRegistrableDomain: '',
@@ -217,58 +232,62 @@ export async function precheckWebsite(
     if (!robotsAllowed) {
       return {
         reachable: false,
+        urlStatus: 'URL_VALID_BUT_UNREACHABLE',
         normalizedUrl: validated.normalizedUrl,
         finalHost: validated.hostname,
         finalRegistrableDomain: validated.registrableDomain,
         redirectedCrossDomain: false,
         robotsAllowed: false,
-        reason: 'Site robots.txt disallows automated inspection.',
+        reason:
+          'Your website URL is valid, but site robots.txt disallows automated inspection. We will use your business answers to prepare a limited assessment.',
       };
     }
 
-    let headOrGet;
-    try {
-      headOrGet = await safeFetch(validated.normalizedUrl, {
-        method: 'HEAD',
-        allowLocalTestFixture: options.allowLocalTestFixture,
-        dnsLookup: options.dnsLookup,
-        allowCrossDomainRedirect: true,
-        requestTimeoutMs: 7000,
-        signal: controller.signal,
-      });
-    } catch {
-      headOrGet = null;
+    const res = await safeFetch(validated.normalizedUrl, {
+      method: 'GET',
+      allowLocalTestFixture: options.allowLocalTestFixture,
+      dnsLookup: options.dnsLookup,
+      allowCrossDomainRedirect: true,
+      requestTimeoutMs: 7000,
+      maxBytes: 128_000,
+      stopAtMaxBytes: true,
+      signal: controller.signal,
+    });
+
+    const okStatus = res.status >= 200 && res.status < 400;
+    const challengeBlocked = okStatus && BOT_CHALLENGE_REGEX.test(res.body);
+    if (!okStatus || challengeBlocked) {
+      return {
+        reachable: false,
+        urlStatus: 'URL_VALID_BUT_UNREACHABLE',
+        normalizedUrl: res.finalUrl,
+        finalHost: res.finalHost,
+        finalRegistrableDomain: res.finalRegistrableDomain,
+        redirectedCrossDomain: res.redirectedCrossDomain,
+        robotsAllowed: true,
+        reason: challengeBlocked
+          ? "Your website URL is valid, but automated access was restricted by bot protection. We'll use the business information you provide to prepare a limited assessment."
+          : `Your website URL is valid, but automated access was restricted (HTTP ${res.status}). We'll use the business information you provide to prepare a limited assessment.`,
+      };
     }
 
-    if (!headOrGet || headOrGet.status === 405 || headOrGet.status === 403 || headOrGet.status === 501) {
-      headOrGet = await safeFetch(validated.normalizedUrl, {
-        method: 'GET',
-        allowLocalTestFixture: options.allowLocalTestFixture,
-        dnsLookup: options.dnsLookup,
-        allowCrossDomainRedirect: true,
-        requestTimeoutMs: 7000,
-        maxBytes: 200_000,
-        signal: controller.signal,
-      });
-    }
-
-    const okStatus = headOrGet.status >= 200 && headOrGet.status < 400;
     return {
-      reachable: okStatus,
-      normalizedUrl: headOrGet.finalUrl,
-      finalHost: headOrGet.finalHost,
-      finalRegistrableDomain: headOrGet.finalRegistrableDomain,
-      redirectedCrossDomain: headOrGet.redirectedCrossDomain,
+      reachable: true,
+      urlStatus: 'WEBSITE_ACCESSIBLE',
+      normalizedUrl: res.finalUrl,
+      finalHost: res.finalHost,
+      finalRegistrableDomain: res.finalRegistrableDomain,
+      redirectedCrossDomain: res.redirectedCrossDomain,
       robotsAllowed: true,
-      reason: okStatus ? undefined : `Website returned HTTP status ${headOrGet.status}.`,
     };
   } catch (err) {
     const message =
       err instanceof SafeFetchError || err instanceof UrlGuardError
-        ? err.message
-        : 'Could not reach the website automatically; we can still run a limited assessment.';
+        ? `Your website URL is valid, but automated access could not complete (${err.message}). We'll use your business information to prepare a limited assessment.`
+        : "Your website URL is valid, but we couldn't check it automatically; we'll still run a limited assessment from your answers.";
     return {
       reachable: false,
+      urlStatus: 'URL_VALID_BUT_UNREACHABLE',
       normalizedUrl: validated.normalizedUrl,
       finalHost: validated.hostname,
       finalRegistrableDomain: validated.registrableDomain,
@@ -335,6 +354,7 @@ export async function crawlWebsite(
         allowLocalTestFixture: options.allowLocalTestFixture,
         dnsLookup: options.dnsLookup,
         allowCrossDomainRedirect: options.allowCrossDomainRedirect ?? true,
+        requestTimeoutMs: 7000,
         signal: budgetController.signal,
         userAgent,
       });
@@ -472,6 +492,7 @@ export async function crawlWebsite(
           allowLocalTestFixture: options.allowLocalTestFixture,
           dnsLookup: options.dnsLookup,
           allowCrossDomainRedirect: false,
+          requestTimeoutMs: 5500,
           signal: budgetController.signal,
           userAgent,
         });

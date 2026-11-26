@@ -20,6 +20,7 @@ export interface SafeFetchOptions extends UrlGuardOptions {
   method?: 'GET' | 'HEAD';
   maxRedirects?: number;
   maxBytes?: number;
+  stopAtMaxBytes?: boolean;
   connectTimeoutMs?: number;
   requestTimeoutMs?: number;
   allowedContentTypes?: string[];
@@ -235,15 +236,24 @@ export async function safeFetch(
 
       for await (const chunk of response.body) {
         const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        totalBytes += buf.length;
-        if (totalBytes > maxBytes) {
+        if (totalBytes + buf.length > maxBytes) {
           truncatedByLimit = true;
+          if (options.stopAtMaxBytes) {
+            const remaining = Math.max(0, maxBytes - totalBytes);
+            if (remaining > 0) {
+              chunks.push(buf.subarray(0, remaining));
+              totalBytes += remaining;
+            }
+            requestController.abort(new Error('Reached maxBytes cap'));
+            break;
+          }
           requestController.abort(new Error('Response body size cap exceeded'));
           throw new SafeFetchError(
             'RESPONSE_TOO_LARGE',
             `Page exceeded maximum allowed size (${maxBytes} bytes).`,
           );
         }
+        totalBytes += buf.length;
         chunks.push(buf);
       }
 

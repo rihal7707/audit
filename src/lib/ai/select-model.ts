@@ -1,55 +1,58 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { GoogleGenAI } from '@google/genai';
 import { getEnv } from '@/lib/env';
 
+let cachedModel: { value: string; fingerprint: string; expiresAt: number } | null = null;
+
+function normalizeModelName(name: string): string {
+  return name.startsWith('models/') ? name.slice('models/'.length) : name;
+}
+
 /**
- * Utility to auto‑select a Gemini model that supports JSON output.
- * It prefers the model specified in GEMINI_MODEL, falling back to GEMINI_FALLBACK_MODEL
- * or the first model that advertises `application/json` response MIME type.
+ * Selects a Gemini model supporting content generation without adding an uncached
+ * `models.list()` round-trip on every invocation.
  */
 export async function selectGeminiModel(): Promise<string> {
   const env = getEnv();
   const primary = env.GEMINI_MODEL?.trim();
   const fallback = env.GEMINI_FALLBACK_MODEL?.trim();
+  const defaultModel = primary || fallback || 'gemini-2.5-flash';
 
-  const client = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY ?? '' });
-  // In test environment or without a real API key, skip real model listing
   if (process.env.NODE_ENV === 'test' || !env.GEMINI_API_KEY?.trim()) {
-    return primary || fallback || 'gemini-1.5-flash';
-  }
-  // Retrieve models without using any
-  interface ModelInfo { name: string; metadata?: { responseMimeTypes?: string[] } }
-  const modelsPager = await client.models.list();
-  const models: ModelInfo[] = [];
-  for await (const m of modelsPager as AsyncIterable<unknown>) {
-    const model = m as Record<string, unknown>;
-    const name = typeof model['name'] === 'string' ? model['name'] : '';
-    const metadata = typeof model['metadata'] === 'object' && model['metadata'] !== null ? model['metadata'] as { responseMimeTypes?: string[] } : undefined;
-    models.push({ name, metadata });
+    return defaultModel;
   }
 
-  // Helper to check if a model supports JSON responses
-  const supportsJson = (model: any) => {
-    const mime = model?.metadata?.responseMimeTypes?.includes('application/json');
-    return !!mime;
-  };
+  const fingerprint = `${primary ?? ''}|${fallback ?? ''}`;
+  const now = Date.now();
+  if (cachedModel && cachedModel.fingerprint === fingerprint && cachedModel.expiresAt > now) {
+    return cachedModel.value;
+  }
 
-  // Try primary
+  // If primary is explicitly configured, return immediately rather than blocking on models.list();
+  // runtime fallback handling covers 429/503/404 against GEMINI_FALLBACK_MODEL.
   if (primary) {
-    const found = models.find((m) => m.name === primary);
-    if (found && supportsJson(found)) return primary;
+    cachedModel = { value: normalizeModelName(primary), fingerprint, expiresAt: now + 10 * 60_000 };
+    return cachedModel.value;
   }
 
-  // Try fallback
-  if (fallback) {
-    const found = models.find((m) => m.name === fallback);
-    if (found && supportsJson(found)) return fallback;
+  try {
+    const client = new GoogleGenAI({
+      apiKey: env.GEMINI_API_KEY,
+      httpOptions: { timeout: 6000, retryOptions: { attempts: 1 } },
+    });
+    const modelsPager = await client.models.list();
+    for await (const m of modelsPager as AsyncIterable<unknown>) {
+      const model = m as { name?: string; supportedActions?: string[] };
+      const rawName = typeof model?.name === 'string' ? normalizeModelName(model.name) : '';
+      const actions = Array.isArray(model?.supportedActions) ? model.supportedActions : [];
+      if (rawName && actions.includes('generateContent') && rawName.includes('gemini')) {
+        cachedModel = { value: rawName, fingerprint, expiresAt: now + 10 * 60_000 };
+        return rawName;
+      }
+    }
+  } catch {
+    // Non-fatal: use configured/default model name
   }
 
-  // Otherwise pick first that supports JSON
-  const jsonModel = models.find(supportsJson);
-  if (jsonModel) return jsonModel.name;
-
-  // As a last resort return the primary even if it may not support JSON
-  return primary || 'gemini-1.5-flash';
+  cachedModel = { value: normalizeModelName(defaultModel), fingerprint, expiresAt: now + 60_000 };
+  return cachedModel.value;
 }
