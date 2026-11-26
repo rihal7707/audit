@@ -1,6 +1,6 @@
 import 'server-only';
 import { GoogleGenAI } from '@google/genai';
-import { selectGeminiModel } from './select-model';
+import { buildModelCandidateList, RESILIENCE_FLASH_MODELS, selectGeminiModel } from './select-model';
 import { getEnv } from '@/lib/env';
 
 
@@ -78,7 +78,7 @@ function createRealGeminiClient(apiKey: string): AiModelClient {
   const ai = new GoogleGenAI({
     apiKey,
     httpOptions: {
-      timeout: 38_000,
+      timeout: 22_000,
       retryOptions: { attempts: 1 },
     },
   });
@@ -115,45 +115,49 @@ async function callModelWithFallback(
   client: AiModelClient,
   primaryModel: string,
   fallbackModel: string | undefined,
+  extraFallbacks: string[],
   prompt: string,
   responseJsonSchema: Record<string, unknown>,
+  deadlineMs = Date.now() + 46_000,
 ): Promise<{ rawText: string; usedModel: string }> {
-  try {
-    const rawText = await client.generateText({
-      model: primaryModel,
-      systemInstruction: AUDIT_SYSTEM_INSTRUCTION,
-      prompt,
-      responseJsonSchema,
-      temperature: 0.25,
-    });
-    return { rawText, usedModel: primaryModel };
-  } catch (err) {
-    const status = getHttpStatusFromError(err);
-    if (isTransientAiError(status) || status === 404) {
-      if (fallbackModel && fallbackModel !== primaryModel) {
-        try {
-          const rawText = await client.generateText({
-            model: fallbackModel,
-            systemInstruction: AUDIT_SYSTEM_INSTRUCTION,
-            prompt,
-            responseJsonSchema,
-            temperature: 0.25,
-          });
-          return { rawText, usedModel: fallbackModel };
-        } catch (fallbackErr) {
-          const fbStatus = getHttpStatusFromError(fallbackErr);
-          if (isTransientAiError(fbStatus)) {
-            throw new GeminiQuotaError('AI capacity temporarily saturated.', fbStatus || 503);
-          }
-          throw fallbackErr;
-        }
-      }
-      if (isTransientAiError(status)) {
-        throw new GeminiQuotaError('AI capacity temporarily saturated.', status || 503);
-      }
+  const candidates = buildModelCandidateList(primaryModel, fallbackModel, extraFallbacks);
+  let lastErr: unknown = new GeminiGenerationError('No AI model candidates available.');
+  let lastTransientStatus = 503;
+  let sawTransient = false;
+
+  for (let i = 0; i < candidates.length; i++) {
+    if (i > 0 && Date.now() >= deadlineMs) {
+      throw new GeminiQuotaError('AI capacity temporarily saturated.', lastTransientStatus);
     }
-    throw err;
+    const model = candidates[i]!;
+    try {
+      const rawText = await client.generateText({
+        model,
+        systemInstruction: AUDIT_SYSTEM_INSTRUCTION,
+        prompt,
+        responseJsonSchema,
+        temperature: 0.25,
+      });
+      return { rawText, usedModel: model };
+    } catch (err) {
+      lastErr = err;
+      const status = getHttpStatusFromError(err);
+      if (isTransientAiError(status)) {
+        sawTransient = true;
+        lastTransientStatus = status || 503;
+        continue;
+      }
+      if (status === 404) {
+        continue;
+      }
+      throw err;
+    }
   }
+
+  if (sawTransient) {
+    throw new GeminiQuotaError('AI capacity temporarily saturated.', lastTransientStatus);
+  }
+  throw lastErr;
 }
 
 export interface GenerateAuditReportResult extends GroundingResult {
@@ -202,13 +206,18 @@ export async function generateGroundedAuditReport(
     }
   };
 
+  const extraFallbacks = testMockAdapter ? [] : RESILIENCE_FLASH_MODELS;
+  const stageDeadlineMs = Date.now() + 46_000;
+
   // Call 1: normal generation
   const first = await callModelWithFallback(
     client,
     await selectGeminiModel(),
     env.GEMINI_FALLBACK_MODEL,
+    extraFallbacks,
     prompt,
     responseJsonSchema,
+    stageDeadlineMs,
   );
   callsUsed += 1;
 
@@ -226,10 +235,12 @@ export async function generateGroundedAuditReport(
 
     const second = await callModelWithFallback(
       client,
-      await selectGeminiModel(),
+      first.usedModel,
       env.GEMINI_FALLBACK_MODEL,
+      extraFallbacks,
       repairPrompt,
       responseJsonSchema,
+      stageDeadlineMs,
     );
     callsUsed += 1;
     finalModel = second.usedModel;

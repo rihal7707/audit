@@ -2,7 +2,11 @@
 import 'server-only';
 import { GoogleGenAI } from '@google/genai';
 import { getEnv } from '@/lib/env';
-import { selectGeminiModel } from '@/lib/ai/select-model';
+import {
+  buildModelCandidateList,
+  RESILIENCE_FLASH_MODELS,
+  selectGeminiModel,
+} from '@/lib/ai/select-model';
 import { AUDIT_ASSISTANT_SYSTEM_PROMPT } from '@/lib/ai/audit-assistant-prompt';
 import {
   AssistantResponseSchema,
@@ -77,7 +81,7 @@ function isTransientStatus(status: number | null): boolean {
 function createRealClient(apiKey: string): AssistantModelClient {
   const ai = new GoogleGenAI({
     apiKey,
-    httpOptions: { timeout: 32_000, retryOptions: { attempts: 1 } },
+    httpOptions: { timeout: 20_000, retryOptions: { attempts: 1 } },
   });
   return {
     async generateReply({ model, systemInstruction, prompt, responseJsonSchema, maxOutputTokens }) {
@@ -111,6 +115,7 @@ async function callWithFallback(params: {
   client: AssistantModelClient;
   primaryModel: string;
   fallbackModel?: string;
+  extraFallbacks?: string[];
   prompt: string;
   schema: Record<string, unknown>;
   maxOutputTokens: number;
@@ -124,36 +129,41 @@ async function callWithFallback(params: {
       maxOutputTokens: params.maxOutputTokens,
     });
 
-  try {
-    const out = await invoke(params.primaryModel);
-    return { ...out, usedModel: params.primaryModel };
-  } catch (err) {
-    const status = getHttpStatus(err);
-    if (status === 401 || status === 403) {
-      throw new AssistantConfigError('AI service authentication is unavailable.');
-    }
-    if (isTransientStatus(status) || status === 404) {
-      if (params.fallbackModel && params.fallbackModel !== params.primaryModel) {
-        try {
-          const fb = await invoke(params.fallbackModel);
-          return { ...fb, usedModel: params.fallbackModel };
-        } catch (fbErr) {
-          const fbStatus = getHttpStatus(fbErr);
-          if (isTransientStatus(fbStatus)) {
-            throw new AssistantQuotaError('Assistant capacity is temporarily busy.', fbStatus || 503);
-          }
-          if (fbStatus === 401 || fbStatus === 403) {
-            throw new AssistantConfigError('AI service authentication is unavailable.');
-          }
-          throw fbErr;
-        }
+  const candidates = buildModelCandidateList(
+    params.primaryModel,
+    params.fallbackModel,
+    params.extraFallbacks ?? [],
+  );
+  let lastErr: unknown = new AssistantGenerationError('No assistant model candidates available.');
+  let sawTransient = false;
+  let lastTransientStatus = 503;
+
+  for (const model of candidates) {
+    try {
+      const out = await invoke(model);
+      return { ...out, usedModel: model };
+    } catch (err) {
+      lastErr = err;
+      const status = getHttpStatus(err);
+      if (status === 401 || status === 403) {
+        throw new AssistantConfigError('AI service authentication is unavailable.');
       }
       if (isTransientStatus(status)) {
-        throw new AssistantQuotaError('Assistant capacity is temporarily busy.', status || 503);
+        sawTransient = true;
+        lastTransientStatus = status || 503;
+        continue;
       }
+      if (status === 404) {
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
+
+  if (sawTransient) {
+    throw new AssistantQuotaError('Assistant capacity is temporarily busy.', lastTransientStatus);
+  }
+  throw lastErr;
 }
 
 export async function generateAuditAssistantReply(params: {
@@ -224,11 +234,13 @@ export async function generateAuditAssistantReply(params: {
     }
   };
 
+  const extraFallbacks = testMockClient ? [] : RESILIENCE_FLASH_MODELS;
   let callsUsed = 1;
   const first = await callWithFallback({
     client,
     primaryModel,
     fallbackModel: env.GEMINI_FALLBACK_MODEL,
+    extraFallbacks,
     prompt: basePrompt,
     schema,
     maxOutputTokens: env.ASSISTANT_MAX_OUTPUT_TOKENS,
@@ -242,8 +254,9 @@ export async function generateAuditAssistantReply(params: {
     const repairPrompt = `${basePrompt}\n\nPREVIOUS OUTPUT FAILED VALIDATION OR FIGURE CHECK:\n${validated.reason}\nFix the issue and return ONLY valid JSON matching the schema without any ungrounded numbers.`;
     const second = await callWithFallback({
       client,
-      primaryModel,
+      primaryModel: first.usedModel,
       fallbackModel: env.GEMINI_FALLBACK_MODEL,
+      extraFallbacks,
       prompt: repairPrompt,
       schema,
       maxOutputTokens: env.ASSISTANT_MAX_OUTPUT_TOKENS,

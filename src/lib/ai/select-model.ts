@@ -3,6 +3,25 @@ import { getEnv } from '@/lib/env';
 
 let cachedModel: { value: string; fingerprint: string; expiresAt: number } | null = null;
 
+export const RESILIENCE_FLASH_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'];
+
+export function buildModelCandidateList(
+  primary: string,
+  fallback?: string,
+  extras: string[] = [],
+): string[] {
+  const seen = new Set<string>();
+  const list: string[] = [];
+  for (const m of [primary, fallback, ...extras]) {
+    const trimmed = m?.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      list.push(trimmed);
+    }
+  }
+  return list;
+}
+
 function normalizeModelName(name: string): string {
   return name.startsWith('models/') ? name.slice('models/'.length) : name;
 }
@@ -15,7 +34,7 @@ export async function selectGeminiModel(): Promise<string> {
   const env = getEnv();
   const primary = env.GEMINI_MODEL?.trim();
   const fallback = env.GEMINI_FALLBACK_MODEL?.trim();
-  const defaultModel = primary || fallback || 'gemini-2.5-flash';
+  const defaultModel = primary || fallback || 'gemini-3.5-flash-lite';
 
   if (process.env.NODE_ENV === 'test' || !env.GEMINI_API_KEY?.trim()) {
     return defaultModel;
