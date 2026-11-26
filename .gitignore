@@ -19,11 +19,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Env files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env*
 
 # IDE files
 .vscode/
@@ -34,29 +30,17 @@ yarn-error.log*
 *.sln
 *.sw?
 
-# Misc
+# Databases & local data
 coverage/
 data/
 *.db
 *.db-journal
 *.db-wal
+*.sqlite
+*.sqlite3
+
+# Test & deploy artifacts
 playwright-report/
 test-results/
-
-
 .vercel
-.env*
-
-# Local Netlify folder
 .netlify
-
-.env
-.env*.local
-.env.*
-
-.env.local
-
-.env.local
-.env*.local
-node_modules
-.next
