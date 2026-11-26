@@ -1,28 +1,42 @@
 // src/lib/roi/format.ts
-import { CountryOption, COUNTRIES } from '@/lib/config/countries';
+import type { Currency } from './types';
+import { getDefaultCurrencyForCountry } from '@/lib/config/countries';
 
-/** Simple mapping for default currency per country – fallback USD */
-function defaultCurrencyForCountry(countryCode: string): string {
-  const match = COUNTRIES.find((c) => c.code === countryCode);
-  if (!match) return 'USD';
-  // In this repo countries already have a currency name that matches code for most, fallback to USD
-  const map: Record<string, string> = {
-    US: 'USD',
-    IN: 'INR',
-    GB: 'GBP',
-    DE: 'EUR',
-    AE: 'AED',
-    // Add others as needed
-  };
-  return map[match.code] || 'USD';
+const LOCALE_MAP: Record<Currency, string> = {
+  USD: 'en-US',
+  INR: 'en-IN',
+  GBP: 'en-GB',
+  EUR: 'de-DE',
+  AED: 'en-AE',
+};
+
+export function formatCurrency(value: number, currency: Currency = 'USD'): string {
+  const locale = LOCALE_MAP[currency] ?? 'en-US';
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
-export function formatCurrency(value: number, currency: string): string {
-  const safeCurrency = ['USD', 'INR', 'GBP', 'EUR', 'AED'].includes(currency) ? currency : 'USD';
-  const locale = safeCurrency === 'INR' ? 'en-IN' : undefined;
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: safeCurrency }).format(value);
+export function formatHours(value: number): string {
+  return value.toFixed(2);
 }
 
-export function getDefaultCurrencyForCountryCode(code: string): string {
-  return defaultCurrencyForCountry(code);
+export function formatCount(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+export function formatPct(value: number): string {
+  return `${Math.round(value)}%`;
+}
+
+export function formatMonths(value: number): string {
+  if (value < 1) return 'Under 1 month';
+  return `${value.toFixed(1)} months`;
+}
+
+export function defaultCurrencyForCountry(codeOrName: string | null | undefined): Currency {
+  return getDefaultCurrencyForCountry(codeOrName);
 }

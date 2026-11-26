@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "debug:audit": "tsx --conditions=react-server scripts/debug-audit2.ts",
-    "setup": "node scripts/setup.js", 
+    "setup": "node scripts/setup.js",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -34,6 +34,7 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-hook-form": "^7.71.1",
+    "react-markdown": "^10.1.0",
     "recharts": "^3.11.1",
     "robots-parser": "^3.1.1",
     "server-only": "^0.0.1",

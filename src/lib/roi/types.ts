@@ -1,56 +1,80 @@
+// src/lib/roi/types.ts
+
+export const SUPPORTED_CURRENCIES = ['USD', 'INR', 'GBP', 'EUR', 'AED'] as const;
+export type Currency = (typeof SUPPORTED_CURRENCIES)[number];
+
+export const SCENARIO_KEYS = ['conservative', 'moderate', 'optimistic'] as const;
+export type ScenarioKey = (typeof SCENARIO_KEYS)[number];
+
 export interface RoiInputs {
-  // business metrics (optional)
   monthlyEnquiries?: number;
   monthlyCalls?: number;
   monthlyMissedCalls?: number;
-  monthlyAdminTasks?: number; // tasks per month
+  monthlyAdminTasks?: number;
   minutesPerAdminTask?: number;
   monthlyFollowUps?: number;
   minutesPerFollowUp?: number;
-  hourlyCost?: number; // staff cost per hour in currency
+  hourlyCost?: number;
   monthlyBookings?: number;
-  conversionRatePct?: number; // % of enquiries that become bookings
+  conversionRatePct?: number;
   grossProfitPerCustomer?: number;
   implementationCost?: number;
   monthlyOperatingCost?: number;
   monthlyMaintenanceCost?: number;
-  currency?: 'USD' | 'INR' | 'GBP' | 'EUR' | 'AED';
-  // scenario overrides
-  adminAutomationPct?: number; // 0-90
-  missedCallRecoverPct?: number; // 0-80
-  followUpAutomationPct?: number; // 0-90
-  conversionPctOverride?: number; // optional 0-100
+  currency?: Currency;
 }
 
 export interface RoiScenario {
+  key: ScenarioKey;
   label: string;
   adminAutomationPct: number;
   missedCallRecoverPct: number;
   followUpAutomationPct: number;
+  conversionPctOverride?: number;
 }
 
 export interface RoiOutputs {
-  // computed values (null if missing inputs)
-  adminManualHoursMonthly?: number | null;
-  adminHoursReclaimedMonthly?: number | null;
-  adminHoursReclaimedAnnual?: number | null;
-  followUpManualHoursMonthly?: number | null;
-  followUpHoursReclaimedMonthly?: number | null;
-  followUpHoursReclaimedAnnual?: number | null;
-  capacityValueMonthly?: number | null; // staff time value
-  capacityValueAnnual?: number | null;
-  recoveredEnquiriesMonthly?: number | null;
-  potentialCustomersMonthly?: number | null;
-  grossProfitOpportunityMonthly?: number | null;
-  grossProfitOpportunityAnnual?: number | null;
-  annualRunningCost?: number | null;
-  benefitBasisA?: number | null; // profit only
-  benefitBasisB?: number | null; // profit + capacity value
-  netYear1BasisA?: number | null;
-  netYear1BasisB?: number | null;
-  roiPctBasisA?: number | null;
-  roiPctBasisB?: number | null;
-  paybackMonthsBasisA?: number | null;
-  paybackMonthsBasisB?: number | null;
-  missingReasons?: string[];
+  adminManualHoursMonthly: number | null;
+  adminHoursReclaimedMonthly: number | null;
+  adminHoursReclaimedAnnual: number | null;
+  followUpManualHoursMonthly: number | null;
+  followUpHoursReclaimedMonthly: number | null;
+  followUpHoursReclaimedAnnual: number | null;
+  totalHoursReclaimedMonthly: number | null;
+  capacityValueMonthly: number | null;
+  capacityValueAnnual: number | null;
+  recoveredEnquiriesMonthly: number | null;
+  potentialCustomersMonthly: number | null;
+  grossProfitOpportunityMonthly: number | null;
+  grossProfitOpportunityAnnual: number | null;
+  monthlyRunningCost: number | null;
+  annualRunningCost: number | null;
+  benefitBasisA: number | null;
+  benefitBasisB: number | null;
+  netYear1BasisA: number | null;
+  netYear1BasisB: number | null;
+  roiPctBasisA: number | null;
+  roiPctBasisB: number | null;
+  paybackMonthsBasisA: number | null;
+  paybackMonthsBasisB: number | null;
+  roiReasonA: string;
+  roiReasonB: string;
+  missingReasons: string[];
+}
+
+export interface RoiPrefillNotes {
+  monthlyEnquiries?: string;
+  monthlyCalls?: string;
+}
+
+export interface SavedRoiState {
+  currency: Currency;
+  inputs: RoiInputs;
+  scenarios: Record<ScenarioKey, RoiScenario>;
+  selectedScenario: ScenarioKey;
+  outputs: Record<ScenarioKey, RoiOutputs>;
+  calcVersion: string;
+  interacted: boolean;
+  prefillNotes?: RoiPrefillNotes;
+  updatedAt?: string;
 }
