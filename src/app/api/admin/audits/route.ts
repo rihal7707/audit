@@ -13,6 +13,8 @@ import {
 } from '@/lib/db/repositories/audits.repo';
 import { apiSuccess, createRequestId, requireAdminApiAccess } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
+
 export function parseAdminAuditFilters(searchParams: URLSearchParams): AdminAuditListFilters {
   const parseList = <T extends string>(param: string | null, valid: readonly T[]): T[] => {
     if (!param) return [];

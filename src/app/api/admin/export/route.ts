@@ -4,6 +4,8 @@ import { buildAuditsCsv } from '@/lib/admin/csv-export';
 import { parseAdminAuditFilters } from '@/app/api/admin/audits/route';
 import { createRequestId, requireAdminApiAccess } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
+
 export async function GET(request: NextRequest) {
   const requestId = createRequestId();
   const auth = await requireAdminApiAccess(request, requestId);

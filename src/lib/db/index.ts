@@ -8,6 +8,16 @@ import { getEnv } from '@/lib/env';
 
 export type AppDb = LibSQLDatabase<typeof schema>;
 
+export class DatabaseNotConfiguredError extends Error {
+  public readonly code = 'DATABASE_NOT_CONFIGURED';
+  constructor(
+    message = 'local file database cannot be used on Vercel; set a hosted libSQL URL',
+  ) {
+    super(message);
+    this.name = 'DatabaseNotConfiguredError';
+  }
+}
+
 let singletonClient: Client | null = null;
 let singletonDb: AppDb | null = null;
 let singletonPragmaPromise: Promise<void> | null = null;
@@ -43,18 +53,16 @@ async function ensureRemoteSchemaReady(client: Client): Promise<void> {
     const { runMigrations } = await import('./migrate');
     await runMigrations(drizzle(client, { schema }));
   } catch {
-    // Migration/bootstrap errors will surface on actual query or health check
+    // Surfaced on query/health check cleanly
   }
 }
 
-function ensureLocalFileDirectory(databaseUrl: string): void {
+function assertDbWritableEnvironment(databaseUrl: string): void {
   if (!databaseUrl.startsWith('file:')) return;
   const rawPath = databaseUrl.slice('file:'.length).split('?')[0] ?? '';
   if (!rawPath || rawPath === ':memory:') return;
-  if (process.env.VERCEL === '1') {
-    throw new Error(
-      'DATABASE_URL points to a local SQLite file, which is unsupported on Vercel read-only serverless storage. Configure a hosted libSQL/Turso DATABASE_URL and DATABASE_AUTH_TOKEN.',
-    );
+  if (process.env.VERCEL === '1' || process.env.VERCEL === 'true') {
+    throw new DatabaseNotConfiguredError();
   }
   const resolved = path.resolve(/*turbopackIgnore: true*/ process.cwd(), rawPath);
   const dir = path.dirname(resolved);
@@ -68,7 +76,7 @@ export function createLibsqlClient(databaseUrl?: string, authToken?: string): Cl
   const url = databaseUrl ?? env.DATABASE_URL;
   const token = authToken ?? env.DATABASE_AUTH_TOKEN;
 
-  ensureLocalFileDirectory(url);
+  assertDbWritableEnvironment(url);
 
   return createClient({
     url,

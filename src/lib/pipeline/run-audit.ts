@@ -311,15 +311,15 @@ export async function runAuditPipeline(
     if (!isGeminiConfigured() && process.env.NODE_ENV !== 'test') {
       await updateAuditProgress(auditId, {
         auditStatus: 'FAILED',
-        lastError: 'AI analysis service is not configured yet (missing GEMINI_API_KEY).',
+        lastError: 'KEY_NOT_CONFIGURED: AI analysis service is not configured yet (missing GEMINI_API_KEY).',
         heartbeatAt: new Date().toISOString(),
       });
       await recordAuditEvent(
         auditId,
-        'AUDIT_FAILED',
+        'KEY_NOT_CONFIGURED',
         'Cannot run AI analysis because GEMINI_API_KEY is not configured.',
       );
-      return { status: 'FAILED', error: 'AI service not configured' };
+      return { status: 'FAILED', error: 'KEY_NOT_CONFIGURED' };
     }
 
     // Stage 6: Identifying AI opportunities (single Gemini call)

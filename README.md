@@ -113,6 +113,33 @@ Open `http://localhost:3000`.
 
 ## Deployment & Operations Notes
 
+### Deploy to Vercel
+
+1. **Provision Turso (hosted libSQL)** — create a free database at Turso or via the Vercel Marketplace (`tursocloud/database`) and obtain `DATABASE_URL` (`libsql://...`) and `DATABASE_AUTH_TOKEN`.
+2. **Create `.env.vercel`** from `.env.vercel.example` (never commit `.env.vercel`) and set `DATABASE_URL`, `DATABASE_AUTH_TOKEN`, `GEMINI_API_KEY`, and any optional integrations.
+3. **Run in exact order:**
+   ```bash
+   vercel login
+   npm run env:check       # Validates .env.vercel & generates ADMIN_PASSWORD/ADMIN_SESSION_SECRET/CRON_SECRET/SMOKE_TEST_SECRET if empty
+   npm run deploy:env      # Syncs allow-listed env vars to Vercel via stdin (add --preview for Preview)
+   npm run db:migrate:prod # Applies Drizzle SQL migrations cleanly against hosted Turso DB
+   vercel deploy --prod --yes
+   ```
+4. **Environment variables:**
+   | Variable | Required | Notes |
+   | --- | --- | --- |
+   | `DATABASE_URL` / `TURSO_DATABASE_URL` | Yes | Hosted `libsql://...` URL (`file:` rejected on Vercel) |
+   | `DATABASE_AUTH_TOKEN` / `TURSO_AUTH_TOKEN` | Yes | Turso database auth token |
+   | `GEMINI_API_KEY` | Yes | Google AI Studio / Cloud API key |
+   | `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL` | Optional | Defaults to `gemini-3.8-flash` + fallback |
+   | `GEMINI_PAID_TIER` | Optional | Set `true` once Cloud Billing is enabled (unlocks EEA/UK/CH) |
+   | `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET` | Yes | `>= 12` chars password, `>= 32` chars secret |
+   | `CRON_SECRET` | Yes | Authorizes `/api/internal/jobs/resume` (`GET`/`POST`) and `/api/health?detail=1` |
+   | `NEXT_PUBLIC_APP_URL` | Optional | Set to production domain & rebuild (`next build` inlines `NEXT_PUBLIC_*`) |
+   | `TRUST_PROXY` | Auto | Defaults to `true` on Vercel |
+   | `SMOKE_TEST_SECRET` | Temp | Enables automated `x-smoke-test` check; **remove from Vercel after launch** |
+5. **Plan limits & cron:** Routes execute on `nodejs` (`maxDuration = 60`, `engines.node >=20 <27`). `vercel.json` runs `/api/internal/jobs/resume` daily (`0 3 * * *`), while `GET /api/audits/[token]/status` self-heals stale jobs (>90s heartbeat) via lock-guarded `after()`.
+
 ### Hosted Database (libSQL / Turso vs Persistent Disk)
 - **Serverless (e.g. Vercel):** Local `file:./data/amarketing.db` is ephemeral on serverless hosts. Provision a hosted libSQL/Turso database and set `DATABASE_URL=libsql://...` and `DATABASE_AUTH_TOKEN=...`, then run `npm run db:migrate` during deploy.
 - **Self-hosted / VPS / Docker:** Either hosted libSQL or a mounted persistent volume works with `file:./data/amarketing.db`.

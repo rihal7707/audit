@@ -1,10 +1,19 @@
-import { type NextRequest } from 'next/server';
+import { after, type NextRequest } from 'next/server';
+import { ensureDbReady } from '@/lib/db';
 import {
   findAuditByPublicToken,
+  hasActiveProcessingLock,
   listAuditPages,
+  recordAuditEvent,
+  updateAuditProgress,
 } from '@/lib/db/repositories/audits.repo';
-import { PIPELINE_STAGES_METADATA } from '@/lib/pipeline/run-audit';
+import { PIPELINE_STAGES_METADATA, runAuditPipeline } from '@/lib/pipeline/run-audit';
 import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
+
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
+const STALE_HEARTBEAT_MS = 90_000;
 
 export async function GET(
   _request: NextRequest,
@@ -12,10 +21,35 @@ export async function GET(
 ) {
   const requestId = createRequestId();
   const { token } = await context.params;
+  await ensureDbReady();
 
   const audit = await findAuditByPublicToken(token);
   if (!audit) {
     return apiError('Audit not found.', 404, requestId);
+  }
+
+  const isNonTerminal =
+    audit.auditStatus !== 'COMPLETED' &&
+    audit.auditStatus !== 'COMPLETED_LIMITED' &&
+    audit.auditStatus !== 'FAILED' &&
+    audit.auditStatus !== 'PENDING_REVIEW';
+
+  if (isNonTerminal) {
+    const lastBeatMs = Date.parse(audit.heartbeatAt || audit.updatedAt || audit.createdAt);
+    if (!Number.isNaN(lastBeatMs) && Date.now() - lastBeatMs > STALE_HEARTBEAT_MS) {
+      const locked = await hasActiveProcessingLock(audit.id);
+      if (!locked) {
+        await updateAuditProgress(audit.id, { heartbeatAt: new Date().toISOString() });
+        await recordAuditEvent(
+          audit.id,
+          'SELF_HEAL_RESUMED',
+          `Status check detected stale heartbeat (>90s) in ${audit.auditStatus}; scheduling resume.`,
+        );
+        after(async () => {
+          await runAuditPipeline(audit.id, { requestId, skipCrawlIfStored: true });
+        });
+      }
+    }
   }
 
   const pages = await listAuditPages(audit.id);

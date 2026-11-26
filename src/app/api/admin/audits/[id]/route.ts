@@ -16,6 +16,8 @@ import { LEAD_PRIORITIES, PIPELINE_STAGES } from '@/lib/db/schema';
 import { getAdminAuditRoiAndAssistantDetail } from '@/lib/db/repositories/roi-assistant-analytics.repo';
 import { apiError, apiSuccess, createRequestId, requireAdminApiAccess } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
+
 const PatchAuditSchema = z.object({
   pipelineStage: z.enum(PIPELINE_STAGES).optional(),
   stageReason: z.string().trim().max(400).optional().nullable(),

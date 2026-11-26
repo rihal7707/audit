@@ -863,6 +863,18 @@ export async function acquireProcessingLock(
   });
 }
 
+export async function hasActiveProcessingLock(auditId: number): Promise<boolean> {
+  const db = getDb();
+  const nowIso = new Date().toISOString();
+  const rows = await db
+    .select({ auditId: processingLocks.auditId, expiresAt: processingLocks.expiresAt })
+    .from(processingLocks)
+    .where(eq(processingLocks.auditId, auditId))
+    .limit(1);
+  const row = rows[0];
+  return Boolean(row && row.expiresAt >= nowIso);
+}
+
 export async function releaseProcessingLock(auditId: number): Promise<void> {
   const db = getDb();
   await db.delete(processingLocks).where(eq(processingLocks.auditId, auditId));

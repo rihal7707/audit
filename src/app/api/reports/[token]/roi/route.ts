@@ -11,6 +11,8 @@ import { cleanRoiInputs, SaveRoiPayloadSchema } from '@/lib/roi/validation';
 import { enforceRoiSaveRateLimit } from '@/lib/security/rate-limit';
 import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
+
 function assertReleasedReport(
   audit: Awaited<ReturnType<typeof findAuditByPublicToken>>,
   requestId: string,

@@ -7,6 +7,8 @@ import {
 } from '@/lib/db/repositories/audits.repo';
 import { apiError, apiSuccess, createRequestId, requireAdminApiAccess } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
+
 const NoteSchema = z.object({
   note: z.string().trim().min(1, 'Note cannot be empty.').max(2000),
 });

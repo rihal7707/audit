@@ -7,6 +7,8 @@ import {
 import { sendNonBlockingNotification } from '@/lib/notifications/notify';
 import { apiError, apiSuccess, createRequestId, requireAdminApiAccess } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },

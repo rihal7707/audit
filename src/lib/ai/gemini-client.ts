@@ -65,16 +65,20 @@ function getHttpStatusFromError(err: unknown): number | null {
   const name = String(anyErr.name || '');
   const msg = String(anyErr.message || '');
   if (/\b429\b|RESOURCE_EXHAUSTED|quota/i.test(msg)) return 429;
-  if (/\b503\b|UNAVAILABLE|overloaded|high demand/i.test(msg)) return 503;
+  if (/\b503\b|\b504\b|\b502\b|UNAVAILABLE|DEADLINE_EXCEEDED|overloaded|high demand/i.test(msg)) return 503;
   if (/timeout|timed out|abort|ECONNRESET|ETIMEDOUT/i.test(`${name} ${msg}`)) return 503;
   return null;
+}
+
+function isTransientAiError(status: number | null): boolean {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
 function createRealGeminiClient(apiKey: string): AiModelClient {
   const ai = new GoogleGenAI({
     apiKey,
     httpOptions: {
-      timeout: 26_000,
+      timeout: 38_000,
       retryOptions: { attempts: 1 },
     },
   });
@@ -125,7 +129,7 @@ async function callModelWithFallback(
     return { rawText, usedModel: primaryModel };
   } catch (err) {
     const status = getHttpStatusFromError(err);
-    if (status === 429 || status === 503 || status === 404) {
+    if (isTransientAiError(status) || status === 404) {
       if (fallbackModel && fallbackModel !== primaryModel) {
         try {
           const rawText = await client.generateText({
@@ -138,13 +142,15 @@ async function callModelWithFallback(
           return { rawText, usedModel: fallbackModel };
         } catch (fallbackErr) {
           const fbStatus = getHttpStatusFromError(fallbackErr);
-          if (fbStatus === 429 || fbStatus === 503) {
-            throw new GeminiQuotaError('AI capacity temporarily saturated.', fbStatus);
+          if (isTransientAiError(fbStatus)) {
+            throw new GeminiQuotaError('AI capacity temporarily saturated.', fbStatus || 503);
           }
           throw fallbackErr;
         }
       }
-      throw new GeminiQuotaError('AI capacity temporarily saturated.', status);
+      if (isTransientAiError(status)) {
+        throw new GeminiQuotaError('AI capacity temporarily saturated.', status || 503);
+      }
     }
     throw err;
   }

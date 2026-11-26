@@ -1,6 +1,7 @@
+import crypto from 'node:crypto';
 import { after, type NextRequest } from 'next/server';
 import { getEnv } from '@/lib/env';
-import { ensureDbReady } from '@/lib/db';
+import { DatabaseNotConfiguredError, ensureDbReady } from '@/lib/db';
 import { createRequestLogger } from '@/lib/logger';
 import { isCountryRestrictedForUnpaidGemini } from '@/lib/config/countries';
 import {
@@ -31,7 +32,17 @@ import { runAuditPipeline } from '@/lib/pipeline/run-audit';
 import { sendNonBlockingNotification } from '@/lib/notifications/notify';
 import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
 export const maxDuration = 60;
+
+export function verifySmokeTestHeader(request: Request | NextRequest, smokeSecret?: string): boolean {
+  if (!smokeSecret) return false;
+  const headerVal = request.headers.get('x-smoke-test')?.trim() || '';
+  if (!headerVal) return false;
+  const a = crypto.createHash('sha256').update(headerVal).digest();
+  const b = crypto.createHash('sha256').update(smokeSecret).digest();
+  return crypto.timingSafeEqual(a, b);
+}
 
 async function withSqliteBusyRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
   let lastErr: unknown;
@@ -59,10 +70,12 @@ export async function POST(request: NextRequest) {
   try {
     return await handleAuditSubmission(request, requestId, log);
   } catch (err) {
-    const errMessage = err instanceof Error ? err.message : String(err);
+    if (err instanceof DatabaseNotConfiguredError) {
+      log.error({ code: err.code }, err.message);
+      return apiError(err.message, 503, requestId, { code: 'DATABASE_NOT_CONFIGURED' });
+    }
     const errCode = (err as { code?: unknown })?.code;
     log.error({ err, errCode }, 'Unhandled error in POST /api/audits');
-    console.error(`[POST /api/audits] requestId=${requestId} code=${String(errCode ?? '')} error=${errMessage}`);
     return apiError(
       'Server error while starting your audit. Please retry or contact our team.',
       500,
@@ -102,6 +115,8 @@ async function handleAuditSubmission(
   }
 
   const data = parsed.data;
+  const env = getEnv();
+  const isSmokeBypass = verifySmokeTestHeader(request, env.SMOKE_TEST_SECRET);
 
   // Bot protection 1: honeypot
   if (data.websiteConfirmHp && data.websiteConfirmHp.trim().length > 0) {
@@ -110,7 +125,7 @@ async function handleAuditSubmission(
 
   // Bot protection 2: minimum time-to-submit (~2.5s)
   const elapsedMs = Date.now() - data.formStartedAt;
-  if (elapsedMs < 2500) {
+  if (!isSmokeBypass && elapsedMs < 2500) {
     return apiError(
       'Please take a moment to review your details before submitting.',
       400,
@@ -120,7 +135,9 @@ async function handleAuditSubmission(
 
   // Bot protection 3: optional Cloudflare Turnstile
   const clientIp = getClientIp(request);
-  const turnstile = await verifyTurnstileToken(data.turnstileToken, clientIp);
+  const turnstile = isSmokeBypass
+    ? { success: true }
+    : await verifyTurnstileToken(data.turnstileToken, clientIp);
   if (!turnstile.success) {
     return apiError(turnstile.error || 'Human verification failed.', 400, requestId, {
       fieldErrors: { turnstileToken: turnstile.error || 'Human verification failed.' },
@@ -128,7 +145,6 @@ async function handleAuditSubmission(
   }
 
   // Region guard for unpaid Gemini quota
-  const env = getEnv();
   if (!env.GEMINI_PAID_TIER && isCountryRestrictedForUnpaidGemini(data.country)) {
     return apiError(
       'The free AI business audit is not yet available in your region.',
@@ -184,10 +200,12 @@ async function handleAuditSubmission(
     );
   }
 
-  // DB-backed IP rate limits
-  const rl = await withSqliteBusyRetry(() => enforceAuditSubmissionRateLimit(ipHash));
-  if (!rl.allowed) {
-    return apiError(rl.reason || 'Rate limit exceeded.', 429, requestId);
+  // DB-backed IP rate limits (skipped when authenticated smoke test bypass is active)
+  if (!isSmokeBypass) {
+    const rl = await withSqliteBusyRetry(() => enforceAuditSubmissionRateLimit(ipHash));
+    if (!rl.allowed) {
+      return apiError(rl.reason || 'Rate limit exceeded.', 429, requestId);
+    }
   }
 
   // Global daily cap check

@@ -13,6 +13,8 @@ import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
 
 import { scrubSensitiveForAi } from '@/lib/security/pii-scrub';
 
+export const runtime = 'nodejs';
+
 const IntentContextSchema = z
   .object({
     source: z.enum(['ROI', 'ASSISTANT', 'REPORT']).optional(),

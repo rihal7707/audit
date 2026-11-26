@@ -3,6 +3,8 @@ import { getAdminConfigStatus } from '@/lib/env';
 import { getAuthenticatedAdminSession } from '@/lib/security/admin-auth';
 import { apiSuccess, createRequestId } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
+
 export async function GET(request: NextRequest) {
   const requestId = createRequestId();
   const config = getAdminConfigStatus();

@@ -34,6 +34,7 @@ import {
 import { COUNTRIES, isCountryRestrictedForUnpaidGemini } from '@/lib/config/countries';
 import { normalizeUserWebsiteInput } from '@/lib/validation/url-normalize';
 import { cn } from '@/lib/utils';
+import { classifyAuditSubmitResponse } from '@/components/audit/submit-error';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input, Select, Textarea } from '@/components/ui/form-fields';
@@ -329,12 +330,14 @@ export function AuditWizard({
     }
 
     if (!res.ok) {
-      const reqId = typeof json?.requestId === 'string' ? json.requestId : res.headers.get('X-Request-Id');
-      const serverMsg = typeof json?.error === 'string' ? json.error : null;
-
-      if (json?.fieldErrors && typeof json.fieldErrors === 'object') {
+      const classified = classifyAuditSubmitResponse({
+        status: res.status,
+        headerRequestId: res.headers.get('X-Request-Id'),
+        rawText,
+      });
+      if (classified.fieldErrors) {
         let earliestStep = 5;
-        for (const [fieldName, msg] of Object.entries(json.fieldErrors as Record<string, string>)) {
+        for (const [fieldName, msg] of Object.entries(classified.fieldErrors)) {
           form.setError(fieldName as keyof AuditSubmissionInput, { message: msg });
           for (const [sNum, sFields] of Object.entries(STEP_FIELDS)) {
             if (sFields.includes(fieldName as keyof AuditSubmissionInput)) {
@@ -345,27 +348,8 @@ export function AuditWizard({
         if (earliestStep < 5) {
           moveToStep(earliestStep);
         }
-        setSubmitError(serverMsg || 'Please review the highlighted fields before submitting.');
-        return;
       }
-
-      if (!json) {
-        setSubmitError(
-          `Server error while submitting your audit (HTTP ${res.status}, non-JSON response). Please check server logs and retry.`,
-        );
-        return;
-      }
-
-      if (res.status >= 500) {
-        setSubmitError(
-          `${serverMsg || 'Server error while preparing your audit.'}${reqId ? ` (Request ID: ${reqId})` : ` (HTTP ${res.status})`}`,
-        );
-        return;
-      }
-
-      setSubmitError(
-        `${serverMsg || `Could not submit your audit (HTTP ${res.status}).`}${reqId ? ` (Request ID: ${reqId})` : ''}`,
-      );
+      setSubmitError(classified.message);
       return;
     }
 

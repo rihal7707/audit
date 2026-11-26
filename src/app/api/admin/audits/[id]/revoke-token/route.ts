@@ -8,6 +8,8 @@ import {
 import { generatePublicToken } from '@/lib/security/tokens';
 import { apiError, apiSuccess, createRequestId, requireAdminApiAccess } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
+
 const RevokeSchema = z.object({
   mode: z.enum(['rotate', 'revoke']).optional().default('rotate'),
 });

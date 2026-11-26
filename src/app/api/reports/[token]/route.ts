@@ -13,6 +13,8 @@ const DeleteConfirmSchema = z.object({
   confirm: z.literal(true),
 });
 
+export const runtime = 'nodejs';
+
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ token: string }> },

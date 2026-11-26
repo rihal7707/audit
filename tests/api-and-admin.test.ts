@@ -381,7 +381,7 @@ describe('API Validation, Region Guard, Dedupe, Public DTO & Funnel/CSV', () => 
     expect(cronGetOk.status).toBe(200);
 
     // Health check reports schemaReady & database connected
-    const healthRes = await healthRoute();
+    const healthRes = await healthRoute(makeJsonReq('http://localhost:3000/api/health', 'GET'));
     expect(healthRes.status).toBe(200);
     const healthJson = (await healthRes.json()) as {
       application: string;

@@ -13,6 +13,7 @@ import { pruneExpiredRateLimits } from '@/lib/db/repositories/rate-limits.repo';
 import { runAuditPipeline } from '@/lib/pipeline/run-audit';
 import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 function verifyCronSecret(request: NextRequest, expectedSecret: string | undefined): boolean {

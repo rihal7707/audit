@@ -10,6 +10,7 @@ import { detectSensitiveFreeText } from '@/lib/security/pii-scrub';
 import { runAuditPipeline } from '@/lib/pipeline/run-audit';
 import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const SupplementSchema = z.object({

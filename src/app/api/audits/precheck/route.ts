@@ -1,11 +1,13 @@
 import { type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { ensureDbReady } from '@/lib/db';
+import { DatabaseNotConfiguredError, ensureDbReady } from '@/lib/db';
 import { precheckWebsite } from '@/lib/extraction/crawler';
 import { normalizeUserWebsiteInput, UrlGuardError, validateUrlStatic } from '@/lib/security/url-guard';
 import { getClientIpHash } from '@/lib/security/tokens';
 import { enforcePrecheckRateLimit } from '@/lib/security/rate-limit';
 import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
+
+export const runtime = 'nodejs';
 
 const PrecheckSchema = z.object({
   url: z.string().trim().min(3).max(300),
@@ -60,6 +62,9 @@ export async function POST(request: NextRequest) {
       return apiError('Too many website checks this hour. Please wait a moment.', 429, requestId);
     }
   } catch (err) {
+    if (err instanceof DatabaseNotConfiguredError) {
+      return apiError(err.message, 503, requestId, { code: 'DATABASE_NOT_CONFIGURED' });
+    }
     const msg = err instanceof Error ? err.message : 'Database unavailable.';
     console.error(`[POST /api/audits/precheck] requestId=${requestId} dbError=${msg}`);
     return apiError(

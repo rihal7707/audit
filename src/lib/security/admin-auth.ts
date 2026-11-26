@@ -121,6 +121,17 @@ export function verifyAdminCsrf(request: Request | NextRequest): {
     }
   }
 
+  // Also accept request's own host origin (respecting x-forwarded-host only when TRUST_PROXY is enabled)
+  const reqHost =
+    (env.TRUST_PROXY ? request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() : undefined) ||
+    request.headers.get('host')?.trim();
+  if (reqHost) {
+    const reqProto =
+      (env.TRUST_PROXY ? request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() : undefined) ||
+      (reqHost.startsWith('localhost') || reqHost.startsWith('127.0.0.1') ? 'http' : 'https');
+    allowedOrigins.add(`${reqProto}://${reqHost}`);
+  }
+
   const origin = request.headers.get('origin');
   if (origin) {
     if (!allowedOrigins.has(origin)) {

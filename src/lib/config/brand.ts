@@ -1,3 +1,5 @@
+import { getAppUrl } from '@/lib/config/app-url';
+
 export interface BrandConfig {
   name: string;
   legalEntityName: string;
@@ -27,7 +29,7 @@ export const brandConfig: BrandConfig = {
   productTitle: 'AMARKETING – Free AI Business Audit',
   contactEmail: process.env.BUSINESS_CONTACT_EMAIL || 'hello@amarketing.example',
   bookingUrl: process.env.NEXT_PUBLIC_BOOKING_URL || '',
-  appUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+  appUrl: getAppUrl(),
   crawlerUserAgentName: 'AmarketingAuditBot/1.0',
   colors: {
     navy950: '#070F1E',
@@ -41,7 +43,7 @@ export const brandConfig: BrandConfig = {
 };
 
 export function getCrawlerUserAgent(): string {
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || brandConfig.appUrl).replace(/\/+$/, '');
+  const baseUrl = getAppUrl();
   return `${brandConfig.crawlerUserAgentName} (+${baseUrl}/how-we-inspect)`;
 }
 

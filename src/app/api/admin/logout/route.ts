@@ -3,6 +3,8 @@ import { ADMIN_COOKIE_NAME } from '@/lib/security/admin-session-token';
 import { shouldUseSecureAdminCookie, verifyAdminCsrf } from '@/lib/security/admin-auth';
 import { apiError, createRequestId } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
+
 export async function POST(request: NextRequest) {
   const requestId = createRequestId();
   const csrf = verifyAdminCsrf(request);

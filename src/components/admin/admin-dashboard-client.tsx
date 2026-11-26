@@ -44,6 +44,13 @@ export function AdminDashboardClient({
     releaseMode: string;
     model: string;
     maxAuditsPerDay: number;
+    dbReachable?: boolean;
+    schemaOk?: boolean;
+    databaseMode?: string;
+    adminConfigured?: boolean;
+    cronConfigured?: boolean;
+    onVercel?: boolean;
+    appUrlHost?: string;
     assistantConfig?: {
       enabled: boolean;
       maxUserMessages: number;
@@ -146,6 +153,38 @@ export function AdminDashboardClient({
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </Link>
       </div>
+
+      {/* Runtime Environment Checklist (booleans & host only, no secrets) */}
+      <Card className="p-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+          Runtime Health Checklist
+        </p>
+        <div className="mt-2.5 flex flex-wrap gap-2 text-xs">
+          {[
+            { label: 'DB Reachable', ok: Boolean(runtimeSummary.dbReachable) },
+            { label: 'Schema OK', ok: Boolean(runtimeSummary.schemaOk) },
+            { label: 'Gemini Configured', ok: runtimeSummary.geminiConfigured },
+            { label: 'Admin Configured', ok: Boolean(runtimeSummary.adminConfigured) },
+            { label: 'Cron Configured', ok: Boolean(runtimeSummary.cronConfigured) },
+          ].map((item) => (
+            <span
+              key={item.label}
+              className={`rounded-full border px-2.5 py-1 font-medium ${
+                item.ok
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-red-200 bg-red-50 text-red-800'
+              }`}
+            >
+              {item.label}: {item.ok ? 'OK' : 'Missing'}
+            </span>
+          ))}
+          {runtimeSummary.appUrlHost && (
+            <span className="rounded-full border border-border bg-subtle px-2.5 py-1 font-mono text-muted">
+              Host: {runtimeSummary.appUrlHost}
+            </span>
+          )}
+        </div>
+      </Card>
 
       {/* Environment & Billing Advisory */}
       {(!runtimeSummary.geminiPaidTier || !runtimeSummary.geminiConfigured) && (

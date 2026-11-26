@@ -35,6 +35,8 @@ import { enforceAssistantRateLimits } from '@/lib/security/rate-limit';
 import { getClientIpHash } from '@/lib/security/tokens';
 import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
+
 const PostMessageSchema = z.object({
   message: z.string().trim().min(1),
   conversationId: z.number().int().positive().optional(),
@@ -310,7 +312,12 @@ export async function POST(
         { code: 'UNRELIABLE_OUTPUT' },
       );
     }
-    log.error({ reason: 'unexpected_error' }, 'Assistant unexpected failure');
+    const errName = err instanceof Error ? err.name : 'UnknownError';
+    const statusCode =
+      err && typeof err === 'object' && 'status' in err && typeof (err as { status?: unknown }).status === 'number'
+        ? (err as { status: number }).status
+        : null;
+    log.error({ reason: 'unexpected_error', errName, statusCode }, 'Assistant unexpected failure');
     return apiError('Could not complete your request right now. Please try again.', 500, requestId);
   }
 }

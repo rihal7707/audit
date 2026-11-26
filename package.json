@@ -2,6 +2,9 @@
   "name": "amarketing-audit-platform",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20 <27"
+  },
   "scripts": {
     "debug:audit": "tsx --conditions=react-server scripts/debug-audit2.ts",
     "setup": "node scripts/setup.js",
@@ -14,6 +17,9 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --conditions=react-server src/lib/db/migrate.ts",
+    "db:migrate:prod": "node scripts/migrate-prod.mjs",
+    "env:check": "node scripts/env-check.mjs",
+    "deploy:env": "node scripts/vercel-env-sync.mjs",
     "verify:gemini": "tsx --conditions=react-server scripts/verify-gemini.ts",
     "test:e2e": "playwright test"
   },

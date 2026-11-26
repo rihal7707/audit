@@ -11,6 +11,8 @@ import { enforceAdminLoginRateLimit } from '@/lib/security/rate-limit';
 import { getClientIpHash } from '@/lib/security/tokens';
 import { apiError, createRequestId } from '@/lib/http/api-helpers';
 
+export const runtime = 'nodejs';
+
 const LoginSchema = z.object({
   password: z.string().min(1, 'Password is required.'),
 });

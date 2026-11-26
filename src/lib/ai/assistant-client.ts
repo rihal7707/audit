@@ -65,15 +65,19 @@ function getHttpStatus(err: unknown): number | null {
   if (typeof rec.statusCode === 'number') return rec.statusCode;
   const msg = String(rec.message || '');
   if (/\b429\b|RESOURCE_EXHAUSTED|quota/i.test(msg)) return 429;
-  if (/\b503\b|UNAVAILABLE|overloaded|timeout/i.test(msg)) return 503;
+  if (/\b503\b|\b504\b|\b502\b|UNAVAILABLE|DEADLINE_EXCEEDED|overloaded|timeout/i.test(msg)) return 503;
   if (/\b401\b|\b403\b|API_KEY_INVALID|invalid api key|unauthorized/i.test(msg)) return 401;
   return null;
+}
+
+function isTransientStatus(status: number | null): boolean {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
 function createRealClient(apiKey: string): AssistantModelClient {
   const ai = new GoogleGenAI({
     apiKey,
-    httpOptions: { timeout: 25_000, retryOptions: { attempts: 1 } },
+    httpOptions: { timeout: 32_000, retryOptions: { attempts: 1 } },
   });
   return {
     async generateReply({ model, systemInstruction, prompt, responseJsonSchema, maxOutputTokens }) {
@@ -128,15 +132,15 @@ async function callWithFallback(params: {
     if (status === 401 || status === 403) {
       throw new AssistantConfigError('AI service authentication is unavailable.');
     }
-    if (status === 429 || status === 503) {
+    if (isTransientStatus(status) || status === 404) {
       if (params.fallbackModel && params.fallbackModel !== params.primaryModel) {
         try {
           const fb = await invoke(params.fallbackModel);
           return { ...fb, usedModel: params.fallbackModel };
         } catch (fbErr) {
           const fbStatus = getHttpStatus(fbErr);
-          if (fbStatus === 429 || fbStatus === 503) {
-            throw new AssistantQuotaError('Assistant capacity is temporarily busy.', fbStatus);
+          if (isTransientStatus(fbStatus)) {
+            throw new AssistantQuotaError('Assistant capacity is temporarily busy.', fbStatus || 503);
           }
           if (fbStatus === 401 || fbStatus === 403) {
             throw new AssistantConfigError('AI service authentication is unavailable.');
@@ -144,7 +148,9 @@ async function callWithFallback(params: {
           throw fbErr;
         }
       }
-      throw new AssistantQuotaError('Assistant capacity is temporarily busy.', status);
+      if (isTransientStatus(status)) {
+        throw new AssistantQuotaError('Assistant capacity is temporarily busy.', status || 503);
+      }
     }
     throw err;
   }
