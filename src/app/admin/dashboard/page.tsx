@@ -29,6 +29,14 @@ export default async function AdminDashboardPage() {
           releaseMode: env.REPORT_RELEASE_MODE,
           model: env.GEMINI_MODEL,
           maxAuditsPerDay: env.MAX_AUDITS_PER_DAY,
+          assistantConfig: {
+            enabled: env.ASSISTANT_ENABLED,
+            maxUserMessages: env.ASSISTANT_MAX_USER_MESSAGES_PER_AUDIT,
+            maxMessageChars: env.ASSISTANT_MAX_MESSAGE_CHARS,
+            historyMessages: env.ASSISTANT_HISTORY_MESSAGES,
+            maxOutputTokens: env.ASSISTANT_MAX_OUTPUT_TOKENS,
+            maxCallsPerDay: env.ASSISTANT_MAX_CALLS_PER_DAY,
+          },
         }}
       />
     </AdminShell>

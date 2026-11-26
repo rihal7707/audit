@@ -135,7 +135,7 @@ const UNSUPPORTED_GEMINI_SCHEMA_KEYS = new Set([
   'exclusiveMaximum',
 ]);
 
-function stripUnsupportedJsonSchemaKeys(node: unknown): unknown {
+export function stripUnsupportedJsonSchemaKeys(node: unknown): unknown {
   if (Array.isArray(node)) {
     return node.map(stripUnsupportedJsonSchemaKeys);
   }

@@ -9,6 +9,8 @@ import { DrawerSheet } from '@/components/ui/overlays';
 const NAV_LINKS = [
   { href: '/#how-it-works', label: 'How it works' },
   { href: '/#whats-included', label: "What's included" },
+  { href: '/#roi-simulator', label: 'ROI Simulator' },
+  { href: '/#ask-your-audit', label: 'Ask Your Audit' },
   { href: '/#who-its-for', label: "Who it's for" },
   { href: '/#faq', label: 'FAQ' },
   { href: '/sample-report', label: 'Sample report' },

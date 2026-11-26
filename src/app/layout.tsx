@@ -32,11 +32,11 @@ export const metadata: Metadata = {
     template: `%s | ${brandConfig.name}`,
   },
   description:
-    'Get a personalised, evidence-backed AI and automation audit based on your public website and business operations. Free and without obligation.',
+    'Get a personalised, evidence-backed AI and automation audit based on your public website and business operations — including an interactive ROI simulator and report Q&A assistant. Free and without obligation.',
   openGraph: {
     title: brandConfig.productTitle,
     description:
-      'Personalised, evidence-backed AI and operational automation audit by Amarketing Advertising.',
+      'Personalised, evidence-backed AI and operational automation audit with interactive ROI simulator and grounded Q&A assistant by Amarketing Advertising.',
     url: appUrl,
     siteName: brandConfig.legalEntityName,
     type: 'website',

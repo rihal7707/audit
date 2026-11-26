@@ -39,14 +39,19 @@ export default function PrivacyPage() {
           <h2 className="text-lg font-semibold text-ink">2. How Information Is Used &amp; Third-Party Processors</h2>
           <ul className="list-disc pl-5 space-y-1.5">
             <li>
-              <strong className="text-ink">Google (Gemini API):</strong> Your public website extracts
-              and non-contact business context are sent to Google’s Gemini AI service to generate the
-              structured audit report. Your contact name, business email, and phone number are never
-              sent to Gemini.
+              <strong className="text-ink">Google (Gemini API):</strong> Your public website extracts,
+              non-contact business context, and scrubbed follow-up questions in the Ask Your AI
+              Business Consultant panel are sent to Google’s Gemini AI service. Emails, phone numbers,
+              and long digit sequences are automatically redacted from chat messages before sending, and
+              your contact name, business email, and phone number are never sent to Gemini.
             </li>
             <li>
               <strong className="text-ink">Application Hosting &amp; Database Provider:</strong> Stores
-              submitted audit inputs, extracted public website snapshots, and generated reports.
+              submitted audit inputs, extracted public website snapshots, generated reports, saved ROI
+              simulator inputs/outputs, and scrubbed assistant chat conversations (visible to
+              authenticated administrators only). All stored records follow our configured retention
+              window (<code className="font-mono">DATA_RETENTION_DAYS</code>, default 180 days) and
+              are permanently removed by self-service or administrator deletion.
             </li>
             <li>
               <strong className="text-ink">Resend (if configured):</strong> Delivers optional report

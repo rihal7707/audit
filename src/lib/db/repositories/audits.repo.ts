@@ -22,6 +22,9 @@ import {
   auditPages,
   auditRoi,
   auditStageHistory,
+  assistantAnalytics,
+  assistantConversations,
+  assistantMessages,
   PIPELINE_STAGES,
   processingLocks,
   type AuditStatus,
@@ -751,6 +754,15 @@ export async function deleteAuditById(id: number): Promise<boolean> {
   const db = getDb();
   await db.run(sql`PRAGMA foreign_keys = ON;`).catch(() => {});
   return db.transaction(async (tx) => {
+    const convs = await tx
+      .select({ id: assistantConversations.id })
+      .from(assistantConversations)
+      .where(eq(assistantConversations.auditId, id));
+    if (convs.length > 0) {
+      await tx.delete(assistantMessages).where(inArray(assistantMessages.conversationId, convs.map((c) => c.id)));
+    }
+    await tx.delete(assistantConversations).where(eq(assistantConversations.auditId, id));
+    await tx.delete(assistantAnalytics).where(eq(assistantAnalytics.auditId, id));
     await tx.delete(auditRoi).where(eq(auditRoi.auditId, id));
     const res = await tx.delete(audits).where(eq(audits.id, id));
     return Number(res.rowsAffected ?? 0) > 0;
@@ -768,6 +780,15 @@ export async function deleteAuditByToken(token: string): Promise<boolean> {
       .limit(1);
     const id = existing[0]?.id;
     if (!id) return false;
+    const convs = await tx
+      .select({ id: assistantConversations.id })
+      .from(assistantConversations)
+      .where(eq(assistantConversations.auditId, id));
+    if (convs.length > 0) {
+      await tx.delete(assistantMessages).where(inArray(assistantMessages.conversationId, convs.map((c) => c.id)));
+    }
+    await tx.delete(assistantConversations).where(eq(assistantConversations.auditId, id));
+    await tx.delete(assistantAnalytics).where(eq(assistantAnalytics.auditId, id));
     await tx.delete(auditRoi).where(eq(auditRoi.auditId, id));
     const res = await tx.delete(audits).where(eq(audits.id, id));
     return Number(res.rowsAffected ?? 0) > 0;
@@ -784,6 +805,15 @@ export async function purgeExpiredAudits(cutoffIso: string): Promise<number> {
       .where(lt(audits.createdAt, cutoffIso));
     const ids = expired.map((r) => r.id);
     if (ids.length === 0) return 0;
+    const convs = await tx
+      .select({ id: assistantConversations.id })
+      .from(assistantConversations)
+      .where(inArray(assistantConversations.auditId, ids));
+    if (convs.length > 0) {
+      await tx.delete(assistantMessages).where(inArray(assistantMessages.conversationId, convs.map((c) => c.id)));
+    }
+    await tx.delete(assistantConversations).where(inArray(assistantConversations.auditId, ids));
+    await tx.delete(assistantAnalytics).where(inArray(assistantAnalytics.auditId, ids));
     await tx.delete(auditRoi).where(inArray(auditRoi.auditId, ids));
     const res = await tx.delete(audits).where(inArray(audits.id, ids));
     return Number(res.rowsAffected ?? 0);

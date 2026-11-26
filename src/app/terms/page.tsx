@@ -39,9 +39,11 @@ export default function TermsPage() {
             and create no obligation to purchase services from {brandConfig.legalEntityName}.
           </p>
           <p>
-            Reports do not constitute legal, medical, clinical, financial, or regulatory compliance
-            advice, and {brandConfig.legalEntityName} makes no guarantee of specific revenue,
-            conversion, or cost savings.
+            Reports, ROI simulator scenarios, and AI assistant answers do not constitute legal,
+            medical, clinical, financial, or regulatory compliance advice, and{' '}
+            {brandConfig.legalEntityName} makes no guarantee of specific revenue, conversion, or cost
+            savings. Interactive ROI calculations are deterministic illustrations driven by your own
+            entered numbers and editable starting assumptions.
           </p>
         </section>
 

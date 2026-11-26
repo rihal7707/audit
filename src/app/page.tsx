@@ -28,6 +28,8 @@ import { SiteFooter } from '@/components/layout/site-footer';
 import { Card } from '@/components/ui/card';
 import { AccordionList, type AccordionItemData } from '@/components/ui/overlays';
 import { HeroReportPreview } from '@/components/landing/hero-report-preview';
+import { LandingRoiAndAssistantSections } from '@/components/landing/roi-assistant-preview';
+import { getLandingIncludedSections } from '@/lib/report/section-config';
 import { brandConfig } from '@/lib/config/brand';
 
 const BENEFITS = [
@@ -97,27 +99,8 @@ const HOW_IT_WORKS = [
   },
 ];
 
-const INCLUDED_ITEMS = [
-  'Website and digital presence analysis',
-  'Business messaging and positioning',
-  'Lead capture and conversion opportunities',
-  'Customer enquiry and follow-up opportunities',
-  'Operational automation opportunities',
-  'AI agent recommendations with workflow diagrams',
-  'CRM and integration opportunities',
-  'Prioritised 30 / 60 / 90-day improvement roadmap',
-];
-
-const REPORT_TOC_PREVIEW = [
-  { num: '01', label: 'Executive Summary & Quick Snapshot' },
-  { num: '02', label: 'Digital Presence & Messaging Findings' },
-  { num: '03', label: 'Lead Capture & Conversion Signals' },
-  { num: '04', label: 'Customer Enquiry & Follow-Up Review' },
-  { num: '05', label: 'Prioritised Automation Opportunities' },
-  { num: '06', label: 'Recommended AI Agent Workflows' },
-  { num: '07', label: '30 / 60 / 90-Day Implementation Roadmap' },
-  { num: '08', label: 'Assumptions, Limitations & Next Steps' },
-];
+const LANDING_SECTIONS = getLandingIncludedSections();
+const INCLUDED_GROUPS = ['Understand', 'Automate', 'Act on it'] as const;
 
 const WHO_CAN_BENEFIT = [
   { icon: Stethoscope, label: 'Dental and orthodontic practices' },
@@ -172,6 +155,24 @@ const FAQ_ITEMS: AccordionItemData[] = [
     title: 'What happens after the audit?',
     content:
       'You can read, print, or save your report as a PDF right away. If you would like help prioritising or piloting any of the recommendations, you can book a strategy call or request a pilot directly from the report.',
+  },
+  {
+    value: 'roi-simulator-faq',
+    title: 'How does the ROI Simulator work?',
+    content:
+      'The ROI Simulator runs deterministically in your browser and server using your own operational numbers (tasks, minutes, hourly cost, optional missed calls and setup quote). Conservative, Moderate, and Optimistic settings are editable starting points, not benchmarks, and staff capacity value represents time freed for other work rather than guaranteed cash savings.',
+  },
+  {
+    value: 'assistant-grounding',
+    title: 'How does the AI Business Consultant assistant work?',
+    content:
+      'Your report side panel answers follow-up questions strictly using your stored audit findings, roadmap, and current ROI simulator numbers. Messages are automatically scrubbed of emails, phone numbers, and long number sequences before processing via Google’s Gemini AI service, subject to a per-audit question limit.',
+  },
+  {
+    value: 'delete-everything',
+    title: 'Can I delete my audit, ROI inputs, and chat history?',
+    content:
+      'Yes. Use the self-service delete control at the bottom of your report at any time to permanently erase your audit report, crawled website records, saved ROI figures, assistant chat messages, and contact details.',
   },
 ];
 
@@ -317,17 +318,29 @@ export default function LandingPage() {
                   clearly distinguishing verified website observations from hypotheses.
                 </p>
 
-                <ul className="grid gap-3 pt-2 sm:grid-cols-2">
-                  {INCLUDED_ITEMS.map((item) => (
-                    <li key={item} className="flex items-start gap-2.5 text-sm text-ink">
-                      <CheckCircle2
-                        className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"
-                        aria-hidden="true"
-                      />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-4 pt-2">
+                  {INCLUDED_GROUPS.map((group) => {
+                    const groupItems = LANDING_SECTIONS.filter((s) => s.group === group);
+                    return (
+                      <div key={group}>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-navy-800 mb-2">
+                          {group}
+                        </p>
+                        <ul className="grid gap-2 sm:grid-cols-2">
+                          {groupItems.map((item) => (
+                            <li key={item.id} className="flex items-start gap-2 text-sm text-ink">
+                              <CheckCircle2
+                                className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"
+                                aria-hidden="true"
+                              />
+                              <span>{item.label}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="lg:col-span-6">
@@ -342,8 +355,8 @@ export default function LandingPage() {
                     <span className="text-xs font-mono text-muted">A4 Print-Ready</span>
                   </div>
                   <div className="divide-y divide-border px-6 py-2">
-                    {REPORT_TOC_PREVIEW.map((row) => (
-                      <div key={row.num} className="flex items-center justify-between py-3 text-sm">
+                    {LANDING_SECTIONS.map((row) => (
+                      <div key={row.id} className="flex items-center justify-between py-3 text-sm">
                         <div className="flex items-center gap-3">
                           <span className="font-mono text-xs font-semibold text-teal-700">
                             {row.num}
@@ -359,6 +372,8 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+
+        <LandingRoiAndAssistantSections />
 
         {/* Who Can Benefit */}
         <section id="who-its-for" className="scroll-mt-20 border-y border-border bg-surface py-16 lg:py-24">

@@ -28,6 +28,12 @@ import {
 import { Callout } from '@/components/ui/interactive-controls';
 import { EmptyState, Skeleton } from '@/components/ui/overlays';
 import type { AdminStatsData } from '@/lib/db/repositories/audits.repo';
+import type { AdminRoiAndAssistantStats } from '@/lib/db/repositories/roi-assistant-analytics.repo';
+import { AdminRoiAndAssistantStatsCard } from './admin-roi-assistant-stats';
+
+interface DashboardStatsPayload extends AdminStatsData {
+  roiAndAssistant?: AdminRoiAndAssistantStats;
+}
 
 export function AdminDashboardClient({
   runtimeSummary,
@@ -38,9 +44,17 @@ export function AdminDashboardClient({
     releaseMode: string;
     model: string;
     maxAuditsPerDay: number;
+    assistantConfig?: {
+      enabled: boolean;
+      maxUserMessages: number;
+      maxMessageChars: number;
+      historyMessages: number;
+      maxOutputTokens: number;
+      maxCallsPerDay: number;
+    };
   };
 }) {
-  const [stats, setStats] = React.useState<AdminStatsData | null>(null);
+  const [stats, setStats] = React.useState<DashboardStatsPayload | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -49,7 +63,7 @@ export function AdminDashboardClient({
         if (!res.ok) throw new Error('Failed to load dashboard metrics.');
         return res.json();
       })
-      .then((data: AdminStatsData) => setStats(data))
+      .then((data: DashboardStatsPayload) => setStats(data))
       .catch((e) => setError(e instanceof Error ? e.message : 'Error loading dashboard'));
   }, []);
 
@@ -322,6 +336,13 @@ export function AdminDashboardClient({
       </div>
 
       {/* Recent Audits */}
+      {stats.roiAndAssistant && (
+        <AdminRoiAndAssistantStatsCard
+          stats={stats.roiAndAssistant}
+          assistantConfig={runtimeSummary.assistantConfig}
+        />
+      )}
+
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <h2 className="text-base font-semibold text-ink">Recent Submissions</h2>

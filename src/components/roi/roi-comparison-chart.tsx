@@ -41,9 +41,9 @@ export function RoiComparisonChart({
   return (
     <Card className="p-5 space-y-5">
       <div>
-        <h4 className="text-sm font-semibold text-ink">
+        <h3 className="text-sm font-semibold text-ink">
           Three-Scenario Comparison &amp; Underlying Assumptions
-        </h4>
+        </h3>
         <p className="text-xs text-muted">
           Annualised comparison (editable starting points, not benchmarks). Selected scenario:{' '}
           <strong className="text-ink">{scenarios[selectedScenario].label}</strong>.

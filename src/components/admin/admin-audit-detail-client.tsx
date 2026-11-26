@@ -39,6 +39,12 @@ import {
 import { CopyButton, ModalDialog, Skeleton, TabsContainer } from '@/components/ui/overlays';
 import { useToast } from '@/components/ui/toast';
 import { ReportView } from '@/components/report/report-view';
+import type { SavedRoiState } from '@/lib/roi/types';
+import type { AssistantMessageDto } from '@/lib/ai/assistant-types';
+import {
+  AdminAssistantDetailTab,
+  AdminRoiDetailTab,
+} from './admin-audit-roi-assistant-tabs';
 
 interface AuditDetailPayload {
   audit: AuditRow;
@@ -47,6 +53,13 @@ interface AuditDetailPayload {
   notes: AuditNoteRow[];
   events: AuditEventRow[];
   stageHistory: AuditStageHistoryRow[];
+  roi?: SavedRoiState | null;
+  assistant?: {
+    messages: AssistantMessageDto[];
+    usedCount: number;
+    maxMessages: number;
+    remainingMessages: number;
+  };
 }
 
 function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
@@ -221,7 +234,7 @@ export function AdminAuditDetailClient({ id }: { id: string }) {
   };
 
   const handlePostAction = async (
-    action: 'retry' | 'regenerate' | 'release' | 'revoke-token',
+    action: 'retry' | 'regenerate' | 'release' | 'revoke-token' | 'reset-assistant',
     label: string,
     body?: unknown,
   ) => {
@@ -739,6 +752,26 @@ export function AdminAuditDetailClient({ id }: { id: string }) {
                   </Card>
                 )}
               </div>
+            ),
+          },
+          {
+            value: 'roi',
+            label: 'ROI',
+            content: <AdminRoiDetailTab roi={detail.roi ?? null} />,
+          },
+          {
+            value: 'assistant',
+            label: `Assistant (${detail.assistant?.messages.length ?? 0})`,
+            content: detail.assistant ? (
+              <AdminAssistantDetailTab
+                assistant={detail.assistant}
+                busyReset={busyAction === 'reset-assistant'}
+                onResetLimit={() =>
+                  handlePostAction('reset-assistant', 'Assistant message cap reset for this audit.')
+                }
+              />
+            ) : (
+              <Card className="p-6 text-sm text-muted">Assistant data unavailable.</Card>
             ),
           },
           {

@@ -6,6 +6,7 @@ import {
   updateAuditLeadScoring,
 } from '@/lib/db/repositories/audits.repo';
 import { enforceIntentRateLimit } from '@/lib/security/rate-limit';
+import { recordAssistantAnalyticsEvent } from '@/lib/db/repositories/assistant.repo';
 import { qualifyLead } from '@/lib/leads/qualify';
 import { sendNonBlockingNotification } from '@/lib/notifications/notify';
 import { apiError, apiSuccess, createRequestId } from '@/lib/http/api-helpers';
@@ -133,6 +134,13 @@ export async function POST(
     await recordAuditEvent(audit.id, 'ROI_CTA_CLICK', `Customer clicked ROI CTA (${type}).`, {
       type,
       scenario: safeContext.scenario ?? null,
+    });
+  }
+  if (safeContext?.source === 'ASSISTANT') {
+    await recordAssistantAnalyticsEvent({
+      auditId: audit.id,
+      eventType: 'cta_clicked',
+      opportunityCategory: safeContext.opportunityId ?? null,
     });
   }
 

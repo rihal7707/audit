@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { Calculator, Calendar, MessageSquare, Rocket } from 'lucide-react';
 import { calculateAllScenarios, cloneDefaultScenarios } from '@/lib/roi/calculator';
+import { formatCurrency, formatHours } from '@/lib/roi/format';
 import { buildRoiNarrative } from '@/lib/roi/narrative';
 import type { Currency, RoiInputs, RoiPrefillNotes, RoiScenario, SavedRoiState, ScenarioKey } from '@/lib/roi/types';
 import { Card } from '@/components/ui/card';
@@ -27,6 +28,7 @@ export interface RoiSimulatorProps {
   onRequestPilot?: (payload: { scenario: string; summaryText: string }) => void;
   onBookCall?: (scenario: string) => void;
   onStateChange?: (inputs: RoiInputs, scenarios: Record<ScenarioKey, RoiScenario>, selected: ScenarioKey) => void;
+  onSummaryLine?: (line: string | null) => void;
 }
 
 export const RoiSimulator = React.forwardRef<RoiSimulatorHandle, RoiSimulatorProps>(
@@ -42,6 +44,7 @@ export const RoiSimulator = React.forwardRef<RoiSimulatorHandle, RoiSimulatorPro
       onRequestPilot,
       onBookCall,
       onStateChange,
+      onSummaryLine,
     },
     ref,
   ) {
@@ -59,6 +62,8 @@ export const RoiSimulator = React.forwardRef<RoiSimulatorHandle, RoiSimulatorPro
 
     const latestRef = React.useRef({ currency, inputs, scenarios, selectedScenario });
     latestRef.current = { currency, inputs, scenarios, selectedScenario };
+    const summaryLineCbRef = React.useRef(onSummaryLine);
+    summaryLineCbRef.current = onSummaryLine;
 
     const persistNow = React.useCallback(async () => {
       if (mode !== 'live' || !publicToken || !dirtyRef.current) return;
@@ -105,6 +110,14 @@ export const RoiSimulator = React.forwardRef<RoiSimulatorHandle, RoiSimulatorPro
           setScenarios(data.scenarios);
           setSelectedScenario(data.selectedScenario);
           setPrefillNotes(data.prefillNotes);
+          if (data.interacted) {
+            const out = data.outputs[data.selectedScenario];
+            const sc = data.scenarios[data.selectedScenario];
+            const hrs = out.totalHoursReclaimedMonthly !== null ? `${formatHours(out.totalHoursReclaimedMonthly)} hrs/mo` : null;
+            const cap = out.capacityValueMonthly !== null ? `${formatCurrency(out.capacityValueMonthly, data.currency)}/mo capacity` : null;
+            const line = [hrs, cap].filter(Boolean).join(', ');
+            summaryLineCbRef.current?.(line ? `Saved ROI (${sc.label}): ${line} (illustrative, not guaranteed).` : null);
+          }
         })
         .catch(() => {
           if (active) setLoadError('Network issue while loading ROI values (calculator still works locally).');
@@ -140,36 +153,35 @@ export const RoiSimulator = React.forwardRef<RoiSimulatorHandle, RoiSimulatorPro
     );
 
     const updateInput = (key: keyof RoiInputs, val: number | undefined) => {
-      setInputs((prev) => {
-        const next = { ...prev, [key]: val };
-        onStateChange?.(next, scenarios, selectedScenario);
-        return next;
-      });
+      const next = { ...latestRef.current.inputs, [key]: val };
+      setInputs(next);
+      onStateChange?.(next, latestRef.current.scenarios, latestRef.current.selectedScenario);
       scheduleSave();
     };
 
     const updateCurrency = (c: Currency) => {
+      const next = { ...latestRef.current.inputs, currency: c };
       setCurrency(c);
-      setInputs((prev) => ({ ...prev, currency: c }));
+      setInputs(next);
+      onStateChange?.(next, latestRef.current.scenarios, latestRef.current.selectedScenario);
       scheduleSave();
     };
 
     const updateScenario = (patch: Partial<RoiScenario>) => {
-      setScenarios((prev) => {
-        const next = {
-          ...prev,
-          [selectedScenario]: { ...prev[selectedScenario], ...patch },
-        };
-        onStateChange?.(inputs, next, selectedScenario);
-        return next;
-      });
+      const sel = latestRef.current.selectedScenario;
+      const next = {
+        ...latestRef.current.scenarios,
+        [sel]: { ...latestRef.current.scenarios[sel], ...patch },
+      };
+      setScenarios(next);
+      onStateChange?.(latestRef.current.inputs, next, sel);
       scheduleSave();
     };
 
     const handleResetAssumptions = () => {
       const fresh = cloneDefaultScenarios();
       setScenarios(fresh);
-      onStateChange?.(inputs, fresh, selectedScenario);
+      onStateChange?.(latestRef.current.inputs, fresh, latestRef.current.selectedScenario);
       scheduleSave();
     };
 

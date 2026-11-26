@@ -42,6 +42,16 @@ const envSchema = z.object({
     .optional()
     .default('false')
     .transform((v) => v === 'true'),
+  ASSISTANT_ENABLED: z
+    .enum(['true', 'false'])
+    .optional()
+    .default('true')
+    .transform((v) => v === 'true'),
+  ASSISTANT_MAX_USER_MESSAGES_PER_AUDIT: z.coerce.number().int().min(1).max(200).default(10),
+  ASSISTANT_MAX_MESSAGE_CHARS: z.coerce.number().int().min(50).max(20000).default(3000),
+  ASSISTANT_HISTORY_MESSAGES: z.coerce.number().int().min(0).max(50).default(6),
+  ASSISTANT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(4096).default(800),
+  ASSISTANT_MAX_CALLS_PER_DAY: z.coerce.number().int().min(0).max(100000).default(200),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -63,6 +73,12 @@ function computeEnvFingerprint(): string {
     process.env.MAX_AUDITS_PER_DAY,
     process.env.REPORT_RELEASE_MODE,
     process.env.CRON_SECRET,
+    process.env.ASSISTANT_ENABLED,
+    process.env.ASSISTANT_MAX_USER_MESSAGES_PER_AUDIT,
+    process.env.ASSISTANT_MAX_MESSAGE_CHARS,
+    process.env.ASSISTANT_HISTORY_MESSAGES,
+    process.env.ASSISTANT_MAX_OUTPUT_TOKENS,
+    process.env.ASSISTANT_MAX_CALLS_PER_DAY,
   ].join('|');
 }
 
@@ -136,4 +152,19 @@ export function isEmailConfigured(): boolean {
 export function isTurnstileConfigured(): boolean {
   const e = getEnv();
   return Boolean(e.TURNSTILE_SITE_KEY && e.TURNSTILE_SECRET_KEY);
+}
+
+export function getAssistantConfigStatus(): { configured: boolean; enabled: boolean; reason?: string } {
+  const e = getEnv();
+  if (!e.ASSISTANT_ENABLED) {
+    return { configured: false, enabled: false, reason: 'Assistant is currently disabled by site settings.' };
+  }
+  if (!e.GEMINI_API_KEY) {
+    return {
+      configured: false,
+      enabled: true,
+      reason: 'Assistant not available yet — AI service key is not configured.',
+    };
+  }
+  return { configured: true, enabled: true };
 }

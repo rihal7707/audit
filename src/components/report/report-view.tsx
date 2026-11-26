@@ -35,7 +35,11 @@ import { Textarea, Input } from '@/components/ui/form-fields';
 import { useToast } from '@/components/ui/toast';
 import { BrandWordmark } from '@/components/layout/site-header';
 import { WorkflowDiagram } from './workflow-diagram';
-import { RoiSimulator } from '@/components/roi/roi-simulator';
+import { RoiSimulator, type RoiSimulatorHandle } from '@/components/roi/roi-simulator';
+import { AssistantSidePanel, type AssistantSidePanelHandle } from '@/components/assistant/assistant-side-panel';
+import type { AssistantFindingRef, AssistantMessageDto } from '@/lib/ai/assistant-types';
+import { buildFindingElementId } from '@/lib/ai/build-audit-assistant-context';
+import type { RoiInputs, RoiScenario, ScenarioKey } from '@/lib/roi/types';
 import {
   WILLOW_CREEK_SAMPLE_ROI_INPUTS,
   WILLOW_CREEK_SAMPLE_SCENARIOS,
@@ -116,6 +120,39 @@ export function ReportView({
   const [intentSubmitting, setIntentSubmitting] = React.useState(false);
   const [consultRequested, setConsultRequested] = React.useState(initialConsult);
   const [pilotRequested, setPilotRequested] = React.useState(initialPilot);
+  const [includeQaInPrint, setIncludeQaInPrint] = React.useState(false);
+  const [roiBriefLine, setRoiBriefLine] = React.useState<string | null>(null);
+  const [assistantMessages, setAssistantMessages] = React.useState<AssistantMessageDto[]>([]);
+  const [sampleRoiState, setSampleRoiState] = React.useState<{
+    inputs: RoiInputs;
+    scenarios: Record<ScenarioKey, RoiScenario>;
+    selectedScenario: ScenarioKey;
+  }>({
+    inputs: WILLOW_CREEK_SAMPLE_ROI_INPUTS,
+    scenarios: WILLOW_CREEK_SAMPLE_SCENARIOS,
+    selectedScenario: 'moderate',
+  });
+
+  const roiRef = React.useRef<RoiSimulatorHandle | null>(null);
+  const assistantRef = React.useRef<AssistantSidePanelHandle | null>(null);
+
+  const findingsLookup = React.useMemo(() => {
+    const map: Record<string, AssistantFindingRef> = {};
+    let n = 1;
+    for (const sec of report.auditSections) {
+      sec.findings.forEach((f, idx) => {
+        const id = `F${n++}`;
+        map[id] = {
+          id,
+          title: f.title,
+          priority: f.priority,
+          sectionCategory: sec.category,
+          cardId: buildFindingElementId(sec.category, idx, f.title),
+        };
+      });
+    }
+    return map;
+  }, [report.auditSections]);
 
   // Delete modal
   const [deleteOpen, setDeleteOpen] = React.useState(false);
@@ -379,8 +416,8 @@ export function ReportView({
         </div>
       </section>
 
-      {/* Main Content + Sticky Contents Rail */}
-      <div className="mx-auto mt-8 max-w-public px-4 sm:px-6">
+      {/* Main Content + Sticky Contents Rail + Side Assistant */}
+      <div className="mx-auto mt-8 max-w-public xl:max-w-[1440px] px-4 sm:px-6">
         {/* Mobile Contents Trigger */}
         <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-2 lg:hidden">
           <Button variant="outline" size="sm" onClick={() => setTocDrawerOpen(true)}>
@@ -396,15 +433,28 @@ export function ReportView({
           </div>
         </div>
 
-        <div className="flex flex-col gap-10 lg:flex-row lg:items-start">
-          {/* Desktop Sticky Rail (240px) */}
-          <aside className="no-print hidden w-[240px] shrink-0 lg:sticky lg:top-24 lg:block">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start xl:gap-8">
+          {/* Desktop Sticky Rail (220px) */}
+          <aside className="no-print hidden w-[220px] shrink-0 lg:sticky lg:top-20 lg:block">
             <Card className="p-4">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted">
                 Report Contents
               </p>
               <nav aria-label="Report sections" className="mt-3 flex flex-col gap-1">
                 {tocEntries.map((item) => {
+                  if (item.kind === 'panel') {
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => assistantRef.current?.openAndFocus()}
+                        className="mt-1 flex items-center gap-1.5 rounded border border-emerald-200 bg-emerald-50/70 px-2.5 py-2 text-left text-xs font-semibold text-teal-800 hover:bg-emerald-100 transition-colors cursor-pointer"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  }
                   const active = activeSection === item.id;
                   return (
                     <a
@@ -424,6 +474,15 @@ export function ReportView({
               </nav>
 
               <div className="mt-5 flex flex-col gap-2 border-t border-border pt-4">
+                <label className="flex items-start gap-2 text-[11px] text-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeQaInPrint}
+                    onChange={(e) => setIncludeQaInPrint(e.target.checked)}
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-border"
+                  />
+                  <span>Include my saved Q&amp;A in the printout</span>
+                </label>
                 <Button
                   variant="primary"
                   size="sm"
@@ -440,8 +499,8 @@ export function ReportView({
             </Card>
           </aside>
 
-          {/* Report Document Body (~760-820px max column) */}
-          <div className="min-w-0 flex-1 max-w-[840px] space-y-12">
+          {/* Report Document Body */}
+          <div className="min-w-0 flex-1 max-w-[820px] space-y-12">
             {/* Evidence Legend */}
             <Card variant="inset" className="p-4 sm:p-5">
               <div className="flex flex-col gap-3">
@@ -480,6 +539,12 @@ export function ReportView({
                 <p className="text-base sm:text-lg leading-relaxed text-ink">
                   {report.executiveSummary.summary}
                 </p>
+
+                {roiBriefLine && (
+                  <p className="rounded border border-emerald-200 bg-emerald-50/50 px-3.5 py-2 text-xs font-medium text-navy-900">
+                    {roiBriefLine}
+                  </p>
+                )}
 
                 <div className="rounded-md border border-border bg-subtle/60 p-4 text-sm">
                   <p className="font-semibold text-ink">Business Overview</p>
@@ -638,7 +703,8 @@ export function ReportView({
                           return (
                             <Card
                               key={`${sec.category}-${idx}-${finding.title}`}
-                              className={cn('print-break-avoid p-5 sm:p-6', priorityBorder)}
+                              id={buildFindingElementId(sec.category, idx, finding.title)}
+                              className={cn('print-break-avoid scroll-mt-24 p-5 sm:p-6', priorityBorder)}
                             >
                               <div className="flex flex-wrap items-start justify-between gap-3">
                                 <h3 className="text-base sm:text-lg font-semibold text-ink">
@@ -849,12 +915,19 @@ export function ReportView({
               </div>
 
               <RoiSimulator
+                ref={roiRef}
                 mode={isAdminPreview ? 'preview' : isSample ? 'sample' : 'live'}
                 businessName={report.businessOverview.businessName}
                 publicToken={publicToken}
                 challenges={challenges}
                 initialInputs={isSample ? WILLOW_CREEK_SAMPLE_ROI_INPUTS : undefined}
                 initialScenarios={isSample ? WILLOW_CREEK_SAMPLE_SCENARIOS : undefined}
+                onStateChange={(inputs, scenarios, selectedScenario) => {
+                  if (isSample) {
+                    setSampleRoiState({ inputs, scenarios, selectedScenario });
+                  }
+                }}
+                onSummaryLine={setRoiBriefLine}
                 onDiscussRoi={({ scenario, summaryText }) => {
                   setIntentContext({ source: 'ROI', scenario });
                   setIntentMessage(summaryText.slice(0, 900));
@@ -1093,7 +1166,54 @@ export function ReportView({
                 </div>
               )}
             </section>
+
+            {/* Verbatim saved Q&A printout block when opted in */}
+            {includeQaInPrint && assistantMessages.length > 0 && (
+              <section className="hidden print-only print-break-before space-y-4 border-t border-border pt-6">
+                <h2 className="text-xl font-semibold text-ink">
+                  Saved AI Consultant Q&amp;A
+                </h2>
+                <div className="space-y-3">
+                  {assistantMessages.map((m) => (
+                    <div key={m.id} className="rounded border border-border p-3 text-xs">
+                      <p className="font-semibold uppercase text-muted mb-1">
+                        {m.role === 'user' ? 'Question' : 'Consultant Response'} ({formatDate(m.createdAt)})
+                      </p>
+                      <p className="whitespace-pre-wrap text-ink leading-relaxed">{m.message}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
+
+          {/* Right-Docked / Responsive AI Business Consultant Side Panel */}
+          {!isAdminPreview && (
+            <AssistantSidePanel
+              ref={assistantRef}
+              mode={isSample ? 'sample' : 'live'}
+              businessName={report.businessOverview.businessName}
+              publicToken={publicToken}
+              sampleRoiState={isSample ? sampleRoiState : undefined}
+              findingsLookup={findingsLookup}
+              onBeforeSendMessage={async () => {
+                await roiRef.current?.flushSave();
+              }}
+              onScrollToFinding={(cardId) => {
+                document.getElementById(cardId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }}
+              onMessagesChange={setAssistantMessages}
+              onTriggerCta={(cta, ctx) => {
+                if (cta.type === 'BOOKING') {
+                  void handleBookCallClick({ source: 'ASSISTANT', ...ctx });
+                  return;
+                }
+                setIntentContext({ source: 'ASSISTANT', ...ctx });
+                if (ctx.lastMessage) setIntentMessage(ctx.lastMessage.slice(0, 600));
+                setIntentModal(cta.type === 'PILOT' ? 'PILOT' : 'DISCUSS');
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -1112,16 +1232,43 @@ export function ReportView({
         title="Report Contents"
       >
         <nav className="flex flex-col gap-1">
-          {tocEntries.map((item) => (
-            <a
-              key={item.id}
-              href={`#${item.id}`}
-              onClick={() => setTocDrawerOpen(false)}
-              className="flex min-h-[44px] items-center rounded px-3 text-sm font-medium text-ink hover:bg-subtle"
-            >
-              {item.label}
-            </a>
-          ))}
+          {tocEntries.map((item) => {
+            if (item.kind === 'panel') {
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setTocDrawerOpen(false);
+                    assistantRef.current?.openAndFocus();
+                  }}
+                  className="mt-2 flex min-h-[44px] items-center gap-2 rounded border border-emerald-200 bg-emerald-50/70 px-3 text-left text-sm font-semibold text-teal-800 hover:bg-emerald-100 cursor-pointer"
+                >
+                  <MessageSquare className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            }
+            return (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                onClick={() => setTocDrawerOpen(false)}
+                className="flex min-h-[44px] items-center rounded px-3 text-sm font-medium text-ink hover:bg-subtle"
+              >
+                {item.label}
+              </a>
+            );
+          })}
+          <label className="mt-4 flex items-start gap-2 border-t border-border pt-3 text-xs text-muted cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeQaInPrint}
+              onChange={(e) => setIncludeQaInPrint(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border"
+            />
+            <span>Include my saved Q&amp;A in the printout</span>
+          </label>
         </nav>
       </DrawerSheet>
 

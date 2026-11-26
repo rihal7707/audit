@@ -54,3 +54,26 @@ export async function enforceRoiSaveRateLimit(publicToken: string): Promise<Rate
   return checkAndIncrementRateLimit(`roi-save:1h:${publicToken}`, 3600, 60);
 }
 
+export async function enforceAssistantRateLimits(params: {
+  ipHash: string;
+  publicToken: string;
+  dailyLimit: number;
+}): Promise<{ allowed: boolean; reason?: string }> {
+  const perIp = await checkAndIncrementRateLimit(`assistant-ip:1h:${params.ipHash}`, 3600, 30);
+  if (!perIp.allowed) {
+    return { allowed: false, reason: 'Too many assistant requests from your connection. Please try again later.' };
+  }
+  const perToken = await checkAndIncrementRateLimit(`assistant-tok:10m:${params.publicToken}`, 600, 8);
+  if (!perToken.allowed) {
+    return { allowed: false, reason: 'Please wait a moment before sending more messages for this report.' };
+  }
+  if (params.dailyLimit <= 0) {
+    return { allowed: false, reason: 'Daily assistant call cap has been reached.' };
+  }
+  const daily = await checkAndIncrementRateLimit('assistant-global:24h', 86400, params.dailyLimit);
+  if (!daily.allowed) {
+    return { allowed: false, reason: 'Daily AI assistant capacity has been reached. Please try again tomorrow.' };
+  }
+  return { allowed: true };
+}
+

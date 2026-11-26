@@ -13,6 +13,7 @@ import {
   updateAuditPipelineStage,
 } from '@/lib/db/repositories/audits.repo';
 import { LEAD_PRIORITIES, PIPELINE_STAGES } from '@/lib/db/schema';
+import { getAdminAuditRoiAndAssistantDetail } from '@/lib/db/repositories/roi-assistant-analytics.repo';
 import { apiError, apiSuccess, createRequestId, requireAdminApiAccess } from '@/lib/http/api-helpers';
 
 const PatchAuditSchema = z.object({
@@ -46,12 +47,13 @@ export async function GET(
     return apiError('Audit not found.', 404, requestId);
   }
 
-  const [pages, findings, notes, events, stageHistory] = await Promise.all([
+  const [pages, findings, notes, events, stageHistory, roiAndAssistant] = await Promise.all([
     listAuditPages(auditId),
     listAuditFindings(auditId),
     listAuditNotes(auditId),
     listAuditEvents(auditId),
     listAuditStageHistory(auditId),
+    getAdminAuditRoiAndAssistantDetail(audit),
   ]);
 
   return apiSuccess(
@@ -62,6 +64,8 @@ export async function GET(
       notes,
       events,
       stageHistory,
+      roi: roiAndAssistant.roi,
+      assistant: roiAndAssistant.assistant,
     },
     200,
     requestId,

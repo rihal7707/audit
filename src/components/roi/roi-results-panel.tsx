@@ -166,7 +166,7 @@ export function RoiResultsPanel({
         ].map((basis) => (
           <Card key={basis.title} variant="inset" className="print-break-avoid p-5 space-y-3">
             <div className="flex items-start justify-between gap-2">
-              <h4 className="text-sm font-semibold text-ink">{basis.title}</h4>
+              <h3 className="text-sm font-semibold text-ink">{basis.title}</h3>
               <span className="rounded bg-surface border border-border px-2 py-0.5 text-[10px] font-medium text-muted">
                 {activeScenario.label}
               </span>

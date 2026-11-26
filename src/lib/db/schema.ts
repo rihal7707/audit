@@ -249,3 +249,54 @@ export const auditRoi = sqliteTable(
   (table) => [uniqueIndex('audit_roi_audit_id_idx').on(table.auditId)],
 );
 
+export const assistantConversations = sqliteTable(
+  'assistant_conversations',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    auditId: integer('audit_id')
+      .notNull()
+      .references(() => audits.id, { onDelete: 'cascade' }),
+    conversationToken: text('conversation_token').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('assistant_conversations_audit_id_idx').on(table.auditId),
+    uniqueIndex('assistant_conversations_token_idx').on(table.conversationToken),
+  ],
+);
+
+export const assistantMessages = sqliteTable(
+  'assistant_messages',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    conversationId: integer('conversation_id')
+      .notNull()
+      .references(() => assistantConversations.id, { onDelete: 'cascade' }),
+    role: text('role').$type<'user' | 'assistant'>().notNull(),
+    message: text('message').notNull(),
+    relatedFindingIds: text('related_finding_ids'),
+    metadataJson: text('metadata_json'),
+    status: text('status').$type<'PENDING' | 'COMPLETED' | 'FAILED'>().notNull().default('COMPLETED'),
+    model: text('model'),
+    promptVersion: text('prompt_version'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [index('assistant_messages_conv_created_idx').on(table.conversationId, table.createdAt)],
+);
+
+export const assistantAnalytics = sqliteTable(
+  'assistant_analytics',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    auditId: integer('audit_id')
+      .notNull()
+      .references(() => audits.id, { onDelete: 'cascade' }),
+    eventType: text('event_type').notNull(),
+    opportunityCategory: text('opportunity_category'),
+    chipId: text('chip_id'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [index('assistant_analytics_audit_idx').on(table.auditId)],
+);
+
