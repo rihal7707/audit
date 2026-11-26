@@ -298,42 +298,83 @@ export function AuditWizard({
       turnstileToken: tsInput?.value || data.turnstileToken || undefined,
     };
 
+    let res: Response;
     try {
-      const res = await fetch('/api/audits', {
+      res = await fetch('/api/audits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const json = await res.json();
+    } catch {
+      setSubmitError(
+        'Network error while reaching the audit server. Please check your connection and retry.',
+      );
+      return;
+    }
 
-      if (!res.ok) {
-        if (json.fieldErrors && typeof json.fieldErrors === 'object') {
-          let earliestStep = 5;
-          for (const [fieldName, msg] of Object.entries(json.fieldErrors as Record<string, string>)) {
-            form.setError(fieldName as keyof AuditSubmissionInput, { message: msg });
-            for (const [sNum, sFields] of Object.entries(STEP_FIELDS)) {
-              if (sFields.includes(fieldName as keyof AuditSubmissionInput)) {
-                earliestStep = Math.min(earliestStep, Number(sNum));
-              }
+    const rawText = await res.text().catch(() => '');
+    let json: Record<string, unknown> | null = null;
+    if (rawText) {
+      try {
+        json = JSON.parse(rawText) as Record<string, unknown>;
+      } catch {
+        json = null;
+      }
+    }
+
+    if (!res.ok) {
+      const reqId = typeof json?.requestId === 'string' ? json.requestId : res.headers.get('X-Request-Id');
+      const serverMsg = typeof json?.error === 'string' ? json.error : null;
+
+      if (json?.fieldErrors && typeof json.fieldErrors === 'object') {
+        let earliestStep = 5;
+        for (const [fieldName, msg] of Object.entries(json.fieldErrors as Record<string, string>)) {
+          form.setError(fieldName as keyof AuditSubmissionInput, { message: msg });
+          for (const [sNum, sFields] of Object.entries(STEP_FIELDS)) {
+            if (sFields.includes(fieldName as keyof AuditSubmissionInput)) {
+              earliestStep = Math.min(earliestStep, Number(sNum));
             }
           }
-          if (earliestStep < 5) {
-            moveToStep(earliestStep);
-          }
         }
-        setSubmitError(json.error || 'Could not submit your audit. Please try again.');
+        if (earliestStep < 5) {
+          moveToStep(earliestStep);
+        }
+        setSubmitError(serverMsg || 'Please review the highlighted fields before submitting.');
         return;
       }
 
-      try {
-        sessionStorage.removeItem(STORAGE_KEY);
-      } catch {
-        // ignore
+      if (!json) {
+        setSubmitError(
+          `Server error while submitting your audit (HTTP ${res.status}, non-JSON response). Please check server logs and retry.`,
+        );
+        return;
       }
-      router.push(json.progressUrl);
-    } catch {
-      setSubmitError('Network error while submitting your audit. Check your connection and retry.');
+
+      if (res.status >= 500) {
+        setSubmitError(
+          `${serverMsg || 'Server error while preparing your audit.'}${reqId ? ` (Request ID: ${reqId})` : ` (HTTP ${res.status})`}`,
+        );
+        return;
+      }
+
+      setSubmitError(
+        `${serverMsg || `Could not submit your audit (HTTP ${res.status}).`}${reqId ? ` (Request ID: ${reqId})` : ''}`,
+      );
+      return;
     }
+
+    const progressUrl = typeof json?.progressUrl === 'string' ? json.progressUrl : null;
+    if (!progressUrl) {
+      setSubmitError('Unexpected server response while starting your audit. Please retry.');
+      return;
+    }
+
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    router.push(progressUrl);
   });
 
   const toggleArrayValue = (field: 'challenges' | 'goals', value: string) => {
@@ -470,12 +511,22 @@ export function AuditWizard({
               {submitError && (
                 <div
                   role="alert"
-                  className="mt-5 flex items-start gap-2.5 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+                  className="mt-5 flex flex-wrap items-start justify-between gap-3 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800"
                 >
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  <div className="flex-1">
+                  <div className="flex flex-1 items-start gap-2.5 min-w-[200px]">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     <p>{submitError}</p>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={form.formState.isSubmitting}
+                    onClick={() => void handleFinalSubmit()}
+                    className="shrink-0 bg-white"
+                  >
+                    Retry
+                  </Button>
                 </div>
               )}
 

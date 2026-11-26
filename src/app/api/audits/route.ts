@@ -36,6 +36,24 @@ export async function POST(request: NextRequest) {
   const requestId = createRequestId();
   const log = createRequestLogger(requestId);
 
+  try {
+    return await handleAuditSubmission(request, requestId, log);
+  } catch (err) {
+    log.error({ err }, 'Unhandled error in POST /api/audits');
+    return apiError(
+      'Server error while starting your audit. Please retry or contact our team.',
+      500,
+      requestId,
+    );
+  }
+}
+
+async function handleAuditSubmission(
+  request: NextRequest,
+  requestId: string,
+  log: ReturnType<typeof createRequestLogger>,
+) {
+
   let rawBody: unknown;
   try {
     rawBody = await request.json();

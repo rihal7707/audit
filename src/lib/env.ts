@@ -6,22 +6,37 @@ const optionalNonEmpty = z
   .optional()
   .transform((v) => (v && v.trim().length > 0 ? v.trim() : undefined));
 
+const emptyToUndefined = (v: unknown) =>
+  typeof v === 'string' && v.trim().length === 0 ? undefined : v;
+
+const boolEnv = (fallback: boolean) =>
+  z.preprocess(
+    emptyToUndefined,
+    z
+      .enum(['true', 'false'])
+      .optional()
+      .default(fallback ? 'true' : 'false')
+      .transform((v) => v === 'true'),
+  );
+
+const intEnv = (min: number, max: number, fallback: number) =>
+  z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(min).max(max).optional().default(fallback),
+  );
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   GEMINI_API_KEY: optionalNonEmpty,
-  GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.8-flash'),
+  GEMINI_MODEL: z.preprocess(emptyToUndefined, z.string().trim().min(1).default('gemini-3.8-flash')),
   GEMINI_FALLBACK_MODEL: optionalNonEmpty,
-  GEMINI_PAID_TIER: z
-    .enum(['true', 'false'])
-    .optional()
-    .default('false')
-    .transform((v) => v === 'true'),
-  DATABASE_URL: z.string().trim().min(1).default('file:./data/amarketing.db'),
+  GEMINI_PAID_TIER: boolEnv(false),
+  DATABASE_URL: z.preprocess(emptyToUndefined, z.string().trim().min(1).default('file:./data/amarketing.db')),
   DATABASE_AUTH_TOKEN: optionalNonEmpty,
   ADMIN_PASSWORD: optionalNonEmpty,
   ADMIN_PASSWORD_HASH: optionalNonEmpty,
   ADMIN_SESSION_SECRET: optionalNonEmpty,
-  NEXT_PUBLIC_APP_URL: z.string().trim().url().default('http://localhost:3000'),
+  NEXT_PUBLIC_APP_URL: z.preprocess(emptyToUndefined, z.string().trim().url().default('http://localhost:3000')),
   NEXT_PUBLIC_BOOKING_URL: optionalNonEmpty.refine(
     (v) => !v || /^https?:\/\//i.test(v),
     'NEXT_PUBLIC_BOOKING_URL must be an http(s) URL',
@@ -33,25 +48,17 @@ const envSchema = z.object({
   TURNSTILE_SITE_KEY: optionalNonEmpty,
   TURNSTILE_SECRET_KEY: optionalNonEmpty,
   CRON_SECRET: optionalNonEmpty,
-  REPORT_RELEASE_MODE: z.enum(['auto', 'review']).default('auto'),
-  MAX_AUDITS_PER_DAY: z.coerce.number().int().nonnegative().max(10000).default(40),
-  DATA_RETENTION_DAYS: z.coerce.number().int().positive().max(3650).default(180),
-  CRAWL_CACHE_TTL_HOURS: z.coerce.number().int().positive().max(720).default(24),
-  TRUST_PROXY: z
-    .enum(['true', 'false'])
-    .optional()
-    .default('false')
-    .transform((v) => v === 'true'),
-  ASSISTANT_ENABLED: z
-    .enum(['true', 'false'])
-    .optional()
-    .default('true')
-    .transform((v) => v === 'true'),
-  ASSISTANT_MAX_USER_MESSAGES_PER_AUDIT: z.coerce.number().int().min(1).max(200).default(10),
-  ASSISTANT_MAX_MESSAGE_CHARS: z.coerce.number().int().min(50).max(20000).default(3000),
-  ASSISTANT_HISTORY_MESSAGES: z.coerce.number().int().min(0).max(50).default(6),
-  ASSISTANT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(4096).default(800),
-  ASSISTANT_MAX_CALLS_PER_DAY: z.coerce.number().int().min(0).max(100000).default(200),
+  REPORT_RELEASE_MODE: z.preprocess(emptyToUndefined, z.enum(['auto', 'review']).default('auto')),
+  MAX_AUDITS_PER_DAY: intEnv(0, 10000, 40),
+  DATA_RETENTION_DAYS: intEnv(1, 3650, 180),
+  CRAWL_CACHE_TTL_HOURS: intEnv(1, 720, 24),
+  TRUST_PROXY: boolEnv(false),
+  ASSISTANT_ENABLED: boolEnv(true),
+  ASSISTANT_MAX_USER_MESSAGES_PER_AUDIT: intEnv(1, 200, 10),
+  ASSISTANT_MAX_MESSAGE_CHARS: intEnv(50, 20000, 3000),
+  ASSISTANT_HISTORY_MESSAGES: intEnv(0, 50, 6),
+  ASSISTANT_MAX_OUTPUT_TOKENS: intEnv(100, 4096, 800),
+  ASSISTANT_MAX_CALLS_PER_DAY: intEnv(0, 100000, 200),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
