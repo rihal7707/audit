@@ -13,6 +13,7 @@
 - [x] Phase 8: Landing Page + Sample Report + Nav (shared section config, ROI & Assistant preview sections, nav anchors, FAQs, metadata)
 - [x] Phase 9: Print, Privacy & Admin (verbatim Q&A print opt-in, privacy/terms updates, real-only Admin ROI & Assistant analytics + detail tabs)
 - [x] Phase 10: Typecheck, ESLint (0 errors), Vitest (10 files, 88 passed vs 71 baseline), Next build, Playwright `tests/e2e/roi-assistant.spec.ts` (1440px/390px + screenshots in `./verification/`), and live Gemini assistant verification on completed audit #1 (`HTTP 200`)
+- [x] Phase 11: Production Vercel + Hosted Turso Deployment — migrated 14 tables (`db:migrate:prod`), `tsc`/`lint`/Vitest (`11` files, `94` passed)/empty-env `next build`, deployed live at `https://amarketing-audit.vercel.app` (`dpl_CaqMDafqgtiAGZdnfDTUiMasS1bN`), verified `/api/health` and all 16 checks of `scripts/prod-smoke.mjs` passing end-to-end
 - [ ] Admin UI display of selected model & VIDEO_API_KEY fallback note
 - [ ] Tier 2 premium add-ons (animated walkthrough)
 - [ ] Tier 3 AI video generation (VIDEO_MODEL handling)
